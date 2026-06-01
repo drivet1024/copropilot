@@ -1,4 +1,9 @@
-import type { UserRole } from "@prisma/client";
+export type UserRole =
+  | "MASTER_USER"
+  | "CONDO_MANAGER"
+  | "BOARD_MEMBER"
+  | "OWNER"
+  | "VIEWER";
 
 export function canAccessAdmin(role: UserRole) {
   return role === "MASTER_USER";
