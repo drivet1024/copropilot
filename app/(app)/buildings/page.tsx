@@ -36,6 +36,7 @@ type BuildingListItem = {
   condoId: string;
   createdAt: Date;
   condo: {
+    id: string;
     name: string;
   };
   units: Array<{ id: string }>;
