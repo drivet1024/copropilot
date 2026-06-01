@@ -1,4 +1,3 @@
-import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -30,6 +29,62 @@ type CondoFormCondo = {
   name?: string;
   address?: string | null;
   organizationId?: string;
+};
+
+type TextSearchFilter = {
+  contains: string;
+  mode: "insensitive" as const;
+};
+
+type CondoWhereFilter = {
+  organizationId?: string;
+  OR?: Array<{
+    name?: TextSearchFilter;
+    address?: TextSearchFilter;
+    organization?: {
+      name: TextSearchFilter;
+    };
+  }>;
+};
+
+type CondoBuildingListItem = {
+  id: string;
+  units: Array<{ id: string }>;
+};
+
+type CondoListItem = {
+  id: string;
+  name: string;
+  address: string | null;
+  organizationId: string;
+  createdAt: Date;
+  organization: {
+    id: string;
+    name: string;
+  };
+  buildings: CondoBuildingListItem[];
+  documents: Array<{ id: string }>;
+  maintenance: Array<{ id: string }>;
+  vendors: Array<{ id: string }>;
+};
+
+type SelectedCondoItem = {
+  id: string;
+  name: string;
+  address: string | null;
+  organizationId: string;
+  organization: {
+    id: string;
+    name: string;
+  };
+};
+
+type CondoTotals = {
+  buildings: number;
+  documents: number;
+  maintenance: number;
+  units: number;
+  vendors: number;
 };
 
 function getSearchParam(value: string | string[] | undefined) {
@@ -236,7 +291,7 @@ export default async function CondosPage({
   const editCondoId = getSearchParam(params.edit);
   const isNewCondoModalOpen =
     getSearchParam(params.new) === "1" && !editCondoId;
-  const filters: Prisma.CondoWhereInput[] = [];
+  const filters: CondoWhereFilter[] = [];
 
   if (selectedOrganizationId) {
     filters.push({ organizationId: selectedOrganizationId });
@@ -245,21 +300,20 @@ export default async function CondosPage({
   if (q) {
     filters.push({
       OR: [
-        { name: { contains: q, mode: "insensitive" } },
-        { address: { contains: q, mode: "insensitive" } },
+        { name: { contains: q, mode: "insensitive" as const } },
+        { address: { contains: q, mode: "insensitive" as const } },
         {
           organization: {
-            name: { contains: q, mode: "insensitive" },
+            name: { contains: q, mode: "insensitive" as const },
           },
         },
       ],
     });
   }
 
-  const condoWhere: Prisma.CondoWhereInput =
-    filters.length > 0 ? { AND: filters } : {};
+  const condoWhere = filters.length > 0 ? { AND: filters } : undefined;
 
-  const [condos, organizations, selectedCondo] = await Promise.all([
+  const [condosRaw, organizationsRaw, selectedCondoRaw] = await Promise.all([
     prisma.condo.findMany({
       where: condoWhere,
       include: {
@@ -292,10 +346,15 @@ export default async function CondosPage({
       : Promise.resolve(null),
   ]);
 
+  const condos = condosRaw as CondoListItem[];
+  const organizations = organizationsRaw as CondoFormOrganization[];
+  const selectedCondo = selectedCondoRaw as SelectedCondoItem | null;
+
   const totals = condos.reduce(
-    (summary, condo) => {
+    (summary: CondoTotals, condo: CondoListItem) => {
       const unitCount = condo.buildings.reduce(
-        (total, building) => total + building.units.length,
+        (total: number, building: CondoBuildingListItem) =>
+          total + building.units.length,
         0
       );
 
@@ -313,7 +372,7 @@ export default async function CondosPage({
       maintenance: 0,
       units: 0,
       vendors: 0,
-    }
+    } satisfies CondoTotals
   );
 
   const kpis = [
@@ -452,9 +511,10 @@ export default async function CondosPage({
                 </tr>
               </thead>
               <tbody className="bg-white text-[15px]">
-                {condos.map((condo) => {
+                {condos.map((condo: CondoListItem) => {
                   const unitCount = condo.buildings.reduce(
-                    (total, building) => total + building.units.length,
+                    (total: number, building: CondoBuildingListItem) =>
+                      total + building.units.length,
                     0
                   );
                   const isDeleteBlocked =
