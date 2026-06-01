@@ -29,6 +29,18 @@ type BuildingFormBuilding = {
   condoId?: string;
 };
 
+type BuildingListItem = {
+  id: string;
+  name: string;
+  address: string | null;
+  condoId: string;
+  createdAt: Date;
+  condo: {
+    name: string;
+  };
+  units: Array<{ id: string }>;
+};
+
 function getSearchParam(value: string | string[] | undefined) {
   if (Array.isArray(value)) {
     return value[0]?.trim() ?? "";
@@ -224,7 +236,7 @@ export default async function BuildingsPage({
 
   const buildingWhere = filters.length > 0 ? { AND: filters } : undefined;
 
-  const [buildings, condos, selectedBuilding] = await Promise.all([
+  const [buildingsRaw, condos, selectedBuilding] = await Promise.all([
     prisma.building.findMany({
       where: buildingWhere,
       include: {
@@ -250,15 +262,17 @@ export default async function BuildingsPage({
       : Promise.resolve(null),
   ]);
 
+  const buildings = buildingsRaw as BuildingListItem[];
+
   const totalUnits = buildings.reduce(
-    (total, building) => total + building.units.length,
+    (total: number, building: BuildingListItem) => total + building.units.length,
     0
   );
   const buildingsWithoutUnits = buildings.filter(
-    (building) => building.units.length === 0
+    (building: BuildingListItem) => building.units.length === 0
   ).length;
   const linkedCondoCount = new Set(
-    buildings.map((building) => building.condoId)
+    buildings.map((building: BuildingListItem) => building.condoId)
   ).size;
 
   const kpis = [
@@ -392,7 +406,7 @@ export default async function BuildingsPage({
                 </tr>
               </thead>
               <tbody className="bg-white text-[15px]">
-                {buildings.map((building) => (
+                {buildings.map((building: BuildingListItem) => (
                   <tr
                     key={building.id}
                     className="border-t border-slate-200 align-middle hover:bg-slate-50"
