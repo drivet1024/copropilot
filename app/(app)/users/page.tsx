@@ -1,4 +1,3 @@
-import type { Prisma, UserRole, UserStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -7,6 +6,15 @@ import { logAction } from "@/lib/audit/log-action";
 import { hashPassword } from "@/lib/auth/password";
 import { requireRole } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
+
+type UserRole =
+  | "MASTER_USER"
+  | "CONDO_MANAGER"
+  | "BOARD_MEMBER"
+  | "OWNER"
+  | "VIEWER";
+
+type UserStatus = "ACTIVE" | "INVITED" | "DISABLED";
 
 const roleOptions: UserRole[] = [
   "MASTER_USER",
@@ -67,6 +75,37 @@ type UserFormUser = {
   organizationId?: string | null;
   condoId?: string | null;
   unitId?: string | null;
+};
+
+type UserUpdateData = {
+  condoId: string | null;
+  email: string;
+  name: string | null;
+  organizationId: string | null;
+  passwordHash?: string;
+  role: UserRole;
+  status: UserStatus;
+  unitId: string | null;
+};
+
+type UserListItem = {
+  id: string;
+  name: string | null;
+  email: string;
+  role: UserRole;
+  status: UserStatus;
+  lastLoginAt: Date | null;
+  condoId: string | null;
+  organizationId: string | null;
+  unitId: string | null;
+  condo: { name: string } | null;
+  organization: { name: string } | null;
+  unit: {
+    number: string;
+    building: {
+      name: string;
+    };
+  } | null;
 };
 
 function getSearchParam(value: string | string[] | undefined) {
@@ -169,7 +208,7 @@ function UserFormFields({
           defaultValue={user?.role ?? "VIEWER"}
           className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-950 outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
         >
-          {roleOptions.map((role) => (
+          {roleOptions.map((role: UserRole) => (
             <option key={role} value={role}>
               {roleLabels[role]}
             </option>
@@ -185,7 +224,7 @@ function UserFormFields({
           defaultValue={user?.status ?? "ACTIVE"}
           className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-950 outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
         >
-          {statusOptions.map((status) => (
+          {statusOptions.map((status: UserStatus) => (
             <option key={status} value={status}>
               {statusLabels[status]}
             </option>
@@ -203,7 +242,7 @@ function UserFormFields({
           className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-950 outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
         >
           <option value="">Aucune organisation</option>
-          {organizations.map((organization) => (
+          {organizations.map((organization: UserFormOrganization) => (
             <option key={organization.id} value={organization.id}>
               {organization.name}
             </option>
@@ -221,7 +260,7 @@ function UserFormFields({
           className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-950 outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
         >
           <option value="">Aucune copropriété</option>
-          {condos.map((condo) => (
+          {condos.map((condo: UserFormCondo) => (
             <option key={condo.id} value={condo.id}>
               {condo.name}
             </option>
@@ -237,7 +276,7 @@ function UserFormFields({
           className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-950 outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
         >
           <option value="">Aucune unité</option>
-          {units.map((unit) => (
+          {units.map((unit: UserFormUnit) => (
             <option key={unit.id} value={unit.id}>
               {unit.number} · {unit.building.name} · {unit.building.condo.name}
             </option>
@@ -299,7 +338,7 @@ async function updateUser(formData: FormData) {
     throw new Error("L’utilisateur et l’email sont obligatoires.");
   }
 
-  const data: Prisma.UserUncheckedUpdateInput = {
+  const data: UserUpdateData = {
     condoId: getOptionalString(formData, "condoId"),
     email,
     name: getOptionalString(formData, "name"),
@@ -375,7 +414,7 @@ export default async function UsersPage({
   const editUserId = getSearchParam(params.edit);
   const isNewUserModalOpen = getSearchParam(params.new) === "1" && !editUserId;
 
-  const [users, organizations, condos, units, selectedUser] =
+  const [usersRaw, organizationsRaw, condosRaw, unitsRaw, selectedUserRaw] =
     await Promise.all([
       prisma.user.findMany({
         select: {
@@ -454,12 +493,18 @@ export default async function UsersPage({
         : Promise.resolve(null),
     ]);
 
-  const activeUsers = users.filter((user) => user.status === "ACTIVE").length;
+  const users = usersRaw as UserListItem[];
+  const organizations = organizationsRaw as UserFormOrganization[];
+  const condos = condosRaw as UserFormCondo[];
+  const units = unitsRaw as UserFormUnit[];
+  const selectedUser = selectedUserRaw as UserFormUser | null;
+
+  const activeUsers = users.filter((user: UserListItem) => user.status === "ACTIVE").length;
   const managers = users.filter(
-    (user) => user.role === "CONDO_MANAGER"
+    (user: UserListItem) => user.role === "CONDO_MANAGER"
   ).length;
   const disabledUsers = users.filter(
-    (user) => user.status === "DISABLED"
+    (user: UserListItem) => user.status === "DISABLED"
   ).length;
 
   const kpis = [
@@ -484,7 +529,7 @@ export default async function UsersPage({
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {kpis.map((kpi) => (
+        {kpis.map((kpi: { label: string; value: number }) => (
           <div
             key={kpi.label}
             className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
@@ -536,7 +581,7 @@ export default async function UsersPage({
                     "Unité",
                     "Dernière connexion",
                     "Actions",
-                  ].map((header) => (
+                  ].map((header: string) => (
                     <th
                       key={header}
                       scope="col"
@@ -548,7 +593,7 @@ export default async function UsersPage({
                 </tr>
               </thead>
               <tbody className="bg-white text-[15px]">
-                {users.map((user) => (
+                {users.map((user: UserListItem) => (
                   <tr
                     key={user.id}
                     className="border-t border-slate-200 align-middle hover:bg-slate-50"
