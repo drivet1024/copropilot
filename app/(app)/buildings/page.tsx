@@ -237,7 +237,7 @@ export default async function BuildingsPage({
 
   const buildingWhere = filters.length > 0 ? { AND: filters } : undefined;
 
-  const [buildingsRaw, condos, selectedBuilding] = await Promise.all([
+  const [buildingsRaw, condosRaw, selectedBuilding] = await Promise.all([
     prisma.building.findMany({
       where: buildingWhere,
       include: {
@@ -264,6 +264,7 @@ export default async function BuildingsPage({
   ]);
 
   const buildings = buildingsRaw as BuildingListItem[];
+  const condos = condosRaw as BuildingFormCondo[];
 
   const totalUnits = buildings.reduce(
     (total: number, building: BuildingListItem) => total + building.units.length,
