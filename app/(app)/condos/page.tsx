@@ -33,7 +33,7 @@ type CondoFormCondo = {
 
 type TextSearchFilter = {
   contains: string;
-  mode: "insensitive" as const;
+  mode: "insensitive";
 };
 
 type CondoWhereFilter = {
