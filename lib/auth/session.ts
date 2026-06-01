@@ -1,4 +1,4 @@
-import type { UserRole, UserStatus } from "@prisma/client";
+
 import { jwtVerify, SignJWT } from "jose";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -7,6 +7,15 @@ import { prisma } from "@/lib/db/prisma";
 
 const SESSION_COOKIE_NAME = "copropilot_session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
+
+export type UserRole =
+  | "MASTER_USER"
+  | "CONDO_MANAGER"
+  | "BOARD_MEMBER"
+  | "OWNER"
+  | "VIEWER";
+
+  export type UserStatus = "ACTIVE" | "INVITED" | "DISABLED";
 
 export type SessionUser = {
   id: string;
