@@ -11,6 +11,15 @@ const dateFormatter = new Intl.DateTimeFormat("fr-CA", {
   year: "numeric",
 });
 
+type SmsTemplateListItem = {
+  id: string;
+  name: string;
+  type: string;
+  body: string;
+  isActive: boolean;
+  updatedAt: Date;
+};
+
 function getFormValue(formData: FormData, key: string) {
   const value = formData.get(key);
 
@@ -95,11 +104,13 @@ async function disableSmsTemplate(formData: FormData) {
 }
 
 export default async function SmsTemplatesPage() {
-  const templates = await prisma.smsTemplate.findMany({
+  const templatesRaw = await prisma.smsTemplate.findMany({
     orderBy: {
       updatedAt: "desc",
     },
   });
+
+  const templates = templatesRaw as SmsTemplateListItem[];
 
   return (
     <div className="space-y-8">
@@ -204,7 +215,7 @@ export default async function SmsTemplatesPage() {
           </div>
         ) : (
           <div className="space-y-5">
-            {templates.map((template) => (
+            {templates.map((template: SmsTemplateListItem) => (
               <div
                 key={template.id}
                 className="rounded-2xl border border-slate-200 bg-slate-50 p-5"
