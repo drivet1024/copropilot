@@ -1,4 +1,3 @@
-import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -20,6 +19,66 @@ type UnitsSearchParams = Promise<{
   edit?: string | string[];
   new?: string | string[];
 }>;
+
+type UnitTextSearchFilter = {
+  contains: string;
+  mode: "insensitive";
+};
+
+type UnitWhereFilter = {
+  buildingId?: string;
+  OR?: Array<{
+    number?: UnitTextSearchFilter;
+    ownerName?: UnitTextSearchFilter;
+    phone?: UnitTextSearchFilter;
+    mobile?: UnitTextSearchFilter;
+    email?: UnitTextSearchFilter;
+  }>;
+  AND?: UnitWhereFilter[];
+};
+
+type UnitListItem = {
+  id: string;
+  number: string;
+  floor: string | null;
+  ownerName: string | null;
+  email: string | null;
+  phone: string | null;
+  mobile: string | null;
+  squareFeet: number | null;
+  insuranceRenewalDate: Date | null;
+  building: {
+    id: string;
+    name: string;
+    condo: {
+      id: string;
+      name: string;
+    };
+    units: Array<{ squareFeet: number | null }>;
+  };
+};
+
+type UnitBuildingListItem = {
+  id: string;
+  name: string;
+  condo: {
+    id: string;
+    name: string;
+  };
+  units: Array<{ id: string; squareFeet: number | null }>;
+};
+
+type SelectedUnitItem = UnitFormUnit & {
+  id: string;
+  number: string;
+  buildingId: string;
+  building: {
+    name: string;
+    condo: {
+      name: string;
+    };
+  };
+};
 
 function getSearchParam(value: string | string[] | undefined) {
   if (Array.isArray(value)) {
@@ -222,7 +281,7 @@ function UnitFormFields({
           <option value="" disabled>
             Sélectionner un immeuble
           </option>
-          {buildings.map((building) => (
+          {buildings.map((building: UnitBuildingListItem) => (
             <option key={building.id} value={building.id}>
               {building.name} — {building.condo.name}
             </option>
@@ -306,7 +365,7 @@ function UnitFormFields({
           disabled={disabled}
         >
           <option value="">Non précisé</option>
-          {roomCountOptions.map((roomCount) => (
+          {roomCountOptions.map((roomCount: string) => (
             <option key={roomCount} value={roomCount}>
               {roomCount}
             </option>
@@ -443,7 +502,7 @@ export default async function UnitsPage({
   const selectedBuildingId = getSearchParam(params.buildingId);
   const editUnitId = getSearchParam(params.edit);
   const isNewUnitModalOpen = getSearchParam(params.new) === "1" && !editUnitId;
-  const filters: Prisma.UnitWhereInput[] = [];
+  const filters: UnitWhereFilter[] = [];
 
   if (selectedBuildingId) {
     filters.push({ buildingId: selectedBuildingId });
@@ -452,19 +511,19 @@ export default async function UnitsPage({
   if (q) {
     filters.push({
       OR: [
-        { number: { contains: q, mode: "insensitive" } },
-        { ownerName: { contains: q, mode: "insensitive" } },
-        { phone: { contains: q, mode: "insensitive" } },
-        { mobile: { contains: q, mode: "insensitive" } },
-        { email: { contains: q, mode: "insensitive" } },
+        { number: { contains: q, mode: "insensitive" as const } },
+        { ownerName: { contains: q, mode: "insensitive" as const } },
+        { phone: { contains: q, mode: "insensitive" as const } },
+        { mobile: { contains: q, mode: "insensitive" as const } },
+        { email: { contains: q, mode: "insensitive" as const } },
       ],
     });
   }
 
-  const unitWhere: Prisma.UnitWhereInput =
-    filters.length > 0 ? { AND: filters } : {};
+  const unitWhere: UnitWhereFilter | undefined =
+    filters.length > 0 ? { AND: filters } : undefined;
 
-  const [units, buildings, selectedUnit] = await Promise.all([
+  const [unitsRaw, buildingsRaw, selectedUnitRaw] = await Promise.all([
     prisma.unit.findMany({
       where: unitWhere,
       include: {
@@ -502,8 +561,12 @@ export default async function UnitsPage({
       : Promise.resolve(null),
   ]);
 
+  const units = unitsRaw as UnitListItem[];
+  const buildings = buildingsRaw as UnitBuildingListItem[];
+  const selectedUnit = selectedUnitRaw as SelectedUnitItem | null;
+
   const linkedCondoCount = new Set(
-    units.map((unit) => unit.building.condo.id)
+    units.map((unit: UnitListItem) => unit.building.condo.id)
   ).size;
 
   const kpis = [
@@ -525,7 +588,7 @@ export default async function UnitsPage({
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">
-        {kpis.map((kpi) => (
+        {kpis.map((kpi: { label: string; value: number }) => (
           <div
             key={kpi.label}
             className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
@@ -565,7 +628,7 @@ export default async function UnitsPage({
             className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-950 outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
           >
             <option value="">Tous les immeubles</option>
-            {buildings.map((building) => (
+            {buildings.map((building: UnitBuildingListItem) => (
               <option key={building.id} value={building.id}>
                 {building.name} — {building.condo.name}
               </option>
@@ -622,7 +685,7 @@ export default async function UnitsPage({
                     "Caractéristiques",
                     "Assurance",
                     "Actions",
-                  ].map((header) => (
+                  ].map((header: string) => (
                     <th
                       key={header}
                       scope="col"
@@ -634,7 +697,7 @@ export default async function UnitsPage({
                 </tr>
               </thead>
               <tbody className="bg-white text-[15px]">
-                {units.map((unit) => (
+                {units.map((unit: UnitListItem) => (
                   <tr
                     key={unit.id}
                     className="border-t border-slate-200 align-middle hover:bg-slate-50"
