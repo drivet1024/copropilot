@@ -1,5 +1,41 @@
 import { prisma } from "@/lib/db/prisma";
 
+
+type InsuranceReminderCondo = {
+  id: string;
+  name: string;
+};
+
+type InsuranceReminderBuilding = {
+  id: string;
+  name: string;
+  condo: InsuranceReminderCondo;
+};
+
+type InsuranceReminderUnit = {
+  id: string;
+  number: string;
+  ownerName: string | null;
+  mobile: string | null;
+  insuranceRenewalDate: Date | null;
+  building: InsuranceReminderBuilding;
+};
+
+type InsuranceReminderLogItem = {
+  id: string;
+  sentAt: Date | null;
+  sentTo: string | null;
+  status: string;
+  messageBody: string | null;
+  errorMessage: string | null;
+  unit: {
+    id: string;
+    number: string;
+    ownerName: string | null;
+    building: InsuranceReminderBuilding;
+  };
+};
+
 const dateFormatter = new Intl.DateTimeFormat("fr-CA", {
   year: "numeric",
   month: "2-digit",
@@ -66,7 +102,7 @@ function getStatusClass(status: string) {
 }
 
 export default async function InsuranceRemindersPage() {
-  const [renewalUnits, reminderLogs] = await Promise.all([
+  const [renewalUnitsRaw, reminderLogsRaw] = await Promise.all([
     prisma.unit.findMany({
       where: {
         insuranceRenewalDate: {
@@ -102,6 +138,9 @@ export default async function InsuranceRemindersPage() {
       take: 50,
     }),
   ]);
+
+  const renewalUnits = renewalUnitsRaw as InsuranceReminderUnit[];
+  const reminderLogs = reminderLogsRaw as InsuranceReminderLogItem[];
 
   return (
     <div className="space-y-8">
@@ -158,7 +197,7 @@ export default async function InsuranceRemindersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
-                {renewalUnits.map((unit) => {
+                {renewalUnits.map((unit: InsuranceReminderUnit) => {
                   const daysUntilRenewal = getDaysUntilRenewal(
                     unit.insuranceRenewalDate
                   );
@@ -244,7 +283,7 @@ export default async function InsuranceRemindersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
-                {reminderLogs.map((log) => (
+                {reminderLogs.map((log: InsuranceReminderLogItem) => (
                   <tr key={log.id} className="align-top hover:bg-slate-50">
                     <td className="whitespace-nowrap px-4 py-4 text-base text-slate-600">
                       {formatDate(log.sentAt)}
