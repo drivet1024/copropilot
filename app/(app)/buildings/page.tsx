@@ -1,4 +1,3 @@
-import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -203,7 +202,7 @@ export default async function BuildingsPage({
   const editBuildingId = getSearchParam(params.edit);
   const isNewBuildingModalOpen =
     getSearchParam(params.new) === "1" && !editBuildingId;
-  const filters: Prisma.BuildingWhereInput[] = [];
+  const filters = [];
 
   if (selectedCondoId) {
     filters.push({ condoId: selectedCondoId });
@@ -212,19 +211,18 @@ export default async function BuildingsPage({
   if (q) {
     filters.push({
       OR: [
-        { name: { contains: q, mode: "insensitive" } },
-        { address: { contains: q, mode: "insensitive" } },
+        { name: { contains: q, mode: "insensitive" as const } },
+        { address: { contains: q, mode: "insensitive" as const } },
         {
           condo: {
-            name: { contains: q, mode: "insensitive" },
+            name: { contains: q, mode: "insensitive" as const },
           },
         },
       ],
     });
   }
 
-  const buildingWhere: Prisma.BuildingWhereInput =
-    filters.length > 0 ? { AND: filters } : {};
+  const buildingWhere = filters.length > 0 ? { AND: filters } : undefined;
 
   const [buildings, condos, selectedBuilding] = await Promise.all([
     prisma.building.findMany({
