@@ -281,7 +281,7 @@ function UnitFormFields({
           <option value="" disabled>
             Sélectionner un immeuble
           </option>
-          {buildings.map((building: UnitBuildingListItem) => (
+          {buildings.map((building: UnitFormBuilding) => (
             <option key={building.id} value={building.id}>
               {building.name} — {building.condo.name}
             </option>
