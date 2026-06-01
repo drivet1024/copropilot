@@ -4,10 +4,197 @@
 // Get a free hosted Postgres database in seconds: `npx create-db`
 
 generator client {
-  provider = "prisma-client"
-  output   = "../app/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+enum UserRole {
+  MASTER_USER
+  CONDO_MANAGER
+  BOARD_MEMBER
+  OWNER
+  VIEWER
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  DISABLED
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  condos Condo[]
+  users  User[]
+}
+
+model User {
+  id             String     @id @default(cuid())
+  email          String     @unique
+  passwordHash   String?
+  name           String?
+  role           UserRole   @default(VIEWER)
+  status         UserStatus @default(ACTIVE)
+  organizationId String?
+  condoId        String?
+  unitId         String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  lastLoginAt    DateTime?
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  condo        Condo?        @relation(fields: [condoId], references: [id])
+  unit         Unit?         @relation(fields: [unitId], references: [id])
+
+  auditLogs AuditLog[]
+}
+
+model Condo {
+  id             String   @id @default(cuid())
+  name           String
+  address        String?
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  buildings    Building[]
+  documents    Document[]
+  maintenance  MaintenanceTask[]
+  users        User[]
+  vendors      Vendor[]
+}
+
+model Building {
+  id        String   @id @default(cuid())
+  name      String
+  address   String?
+  condoId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  condo Condo  @relation(fields: [condoId], references: [id])
+  units Unit[]
+}
+
+model Unit {
+  id         String   @id @default(cuid())
+  number     String
+  floor      String?
+  buildingId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  ownerName            String?
+  email                String?
+  phone                String?
+  mobile               String?
+  squareFeet           Int?
+  roomCount            String?
+  hasFireplace         Boolean   @default(false)
+  bathroomCount        Float?
+  insuranceRenewalDate DateTime?
+  waterHeaterDate      DateTime?
+  hasAirConditioning   Boolean   @default(false)
+
+  building              Building               @relation(fields: [buildingId], references: [id])
+  insuranceReminderLogs InsuranceReminderLog[]
+  users                 User[]
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  entity    String?
+  entityId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+}
+
+model Document {
+  id        String   @id @default(cuid())
+  title     String
+  type      String?
+  url       String?
+  condoId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  condo Condo @relation(fields: [condoId], references: [id])
+}
+
+model SmsTemplate {
+  id        String   @id @default(cuid())
+  name      String
+  body      String
+  type      String   @default("INSURANCE_RENEWAL")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// TODO: En production, stocker les secrets Twilio dans des variables d'environnement ou les chiffrer.
+model TwilioConfig {
+  id                  String   @id @default(cuid())
+  accountSid          String?
+  authToken           String?
+  messagingServiceSid String?
+  fromPhoneNumber     String?
+  isEnabled           Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model InsuranceReminderLog {
+  id                   String   @id @default(cuid())
+  unitId               String
+  insuranceRenewalDate DateTime
+  reminderType         String   @default("SMS_4_WEEKS_BEFORE")
+  sentTo               String?
+  messageBody          String
+  status               String   @default("SENT")
+  errorMessage         String?
+  sentAt               DateTime @default(now())
+  createdAt            DateTime @default(now())
+
+  unit Unit @relation(fields: [unitId], references: [id])
+
+  @@unique([unitId, insuranceRenewalDate, reminderType])
+}
+
+model MaintenanceTask {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  status      String    @default("OPEN")
+  priority    String    @default("MEDIUM")
+  dueDate     DateTime?
+  condoId     String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  condo Condo @relation(fields: [condoId], references: [id])
+}
+
+model Vendor {
+  id        String   @id @default(cuid())
+  name      String
+  category  String?
+  email     String?
+  phone     String?
+  condoId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  condo Condo @relation(fields: [condoId], references: [id])
 }

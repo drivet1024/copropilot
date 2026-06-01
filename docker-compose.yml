@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: copropilot-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: copropilot
+      POSTGRES_PASSWORD: copropilot_password
+      POSTGRES_DB: copropilot_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - copropilot_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  copropilot_postgres_data:
