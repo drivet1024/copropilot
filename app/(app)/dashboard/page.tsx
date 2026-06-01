@@ -1,5 +1,20 @@
 import { prisma } from "@/lib/db/prisma";
 
+type DashboardBuilding = {
+  id: string;
+  units: Array<{ id: string }>;
+};
+
+type DashboardCondo = {
+  id: string;
+  name: string;
+  address: string | null;
+  buildings: DashboardBuilding[];
+  documents: Array<{ id: string }>;
+  maintenance: Array<{ id: string }>;
+  vendors: Array<{ id: string }>;
+};
+
 export default async function DashboardPage() {
   const [
     condoCount,
@@ -8,7 +23,7 @@ export default async function DashboardPage() {
     documentCount,
     maintenanceOpenCount,
     vendorCount,
-    condos,
+    condosRaw,
   ] = await Promise.all([
     prisma.condo.count(),
     prisma.building.count(),
@@ -38,6 +53,8 @@ export default async function DashboardPage() {
       },
     }),
   ]);
+
+  const condos = condosRaw as DashboardCondo[];
 
   const stats = [
     { label: "Copropriétés", value: condoCount },
@@ -95,9 +112,10 @@ export default async function DashboardPage() {
               Aucune copropriété n’a encore été créée.
             </div>
           ) : (
-            condos.map((condo) => {
+            condos.map((condo: DashboardCondo) => {
               const unitCountForCondo = condo.buildings.reduce(
-                (total, building) => total + building.units.length,
+                (total: number, building: DashboardBuilding) =>
+                  total + building.units.length,
                 0
               );
 
