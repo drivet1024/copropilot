@@ -68,7 +68,7 @@ export async function createSession(user: SessionUser) {
     cookieName: SESSION_COOKIE_NAME,
     path: "/",
     secure: process.env.NODE_ENV === "production",
-    sameSite: "none",
+    sameSite: "None",
     maxAge: SESSION_MAX_AGE_SECONDS,
     readableImmediately: Boolean(cookieStore.get(SESSION_COOKIE_NAME)?.value),
   });
