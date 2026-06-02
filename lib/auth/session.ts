@@ -59,7 +59,7 @@ export async function createSession(user: SessionUser) {
   cookieStore.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: "none",
     path: "/",
     maxAge: SESSION_MAX_AGE_SECONDS,
   });
@@ -68,7 +68,7 @@ export async function createSession(user: SessionUser) {
     cookieName: SESSION_COOKIE_NAME,
     path: "/",
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: "none",
     maxAge: SESSION_MAX_AGE_SECONDS,
     readableImmediately: Boolean(cookieStore.get(SESSION_COOKIE_NAME)?.value),
   });
