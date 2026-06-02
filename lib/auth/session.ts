@@ -75,13 +75,24 @@ export async function createSessionToken(user: SessionUser) {
 export async function setSessionCookie(token: string) {
   const cookieStore = await cookies();
 
-  cookieStore.set(SESSION_COOKIE_NAME, token, getCookieOptions());
+  cookieStore.set({
+    name: SESSION_COOKIE_NAME,
+    value: token,
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: SESSION_MAX_AGE_SECONDS,
+    expires: new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000),
+  });
 }
 
 export async function clearSessionCookie() {
   const cookieStore = await cookies();
 
-  cookieStore.set(SESSION_COOKIE_NAME, "", {
+  cookieStore.set({
+    name: SESSION_COOKIE_NAME,
+    value: "",
     httpOnly: true,
     secure: true,
     sameSite: "lax",
