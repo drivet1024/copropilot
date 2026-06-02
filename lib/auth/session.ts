@@ -95,6 +95,19 @@ export async function setSessionCookie(token: string) {
     maxAge: SESSION_MAX_AGE_SECONDS,
     expires: new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000),
   });
+
+  console.warn("[setSessionCookie] after set", {
+      cookieName: SESSION_COOKIE_NAME,
+      path: "/",
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: SESSION_MAX_AGE_SECONDS,
+      cookieNowReadableServerSide: Boolean(
+        cookieStore.get(SESSION_COOKIE_NAME)?.value
+      ),
+    });
+
 }
 
 export async function clearSessionCookie() {
