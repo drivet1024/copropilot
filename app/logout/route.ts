@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
-
-import { clearSessionCookie } from "@/lib/auth/session";
+import { destroySession } from "@/lib/auth/session";
 
 export async function GET() {
-  await clearSessionCookie();
+  await destroySession();
+
   redirect("/login");
 }
