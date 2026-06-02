@@ -122,6 +122,13 @@ export async function getSessionUser(): Promise<SessionUser | null> {
         unitId: true,
       },
     });
+    console.log("SESSION USER DEBUG", {
+      found: Boolean(user),
+      id: user?.id,
+      email: user?.email,
+      role: user?.role,
+      status: user?.status,
+    });
 
     if (!user || user.status !== "ACTIVE") {
       return null;
@@ -154,7 +161,7 @@ export async function requireRole(roles: UserRole[]) {
     status: user.status,
     allowedRoles: roles,
   });
-  
+
   if (!roles.includes(user.role)) {
     redirect("/unauthorized");
   }
