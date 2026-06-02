@@ -106,6 +106,11 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
+  console.log("SESSION DEBUG", {
+  hasToken: Boolean(token),
+  cookieName: SESSION_COOKIE_NAME,
+});
+
   if (!token) {
     return null;
   }
