@@ -82,8 +82,8 @@ export async function POST(request: Request) {
 
     response.cookies.set(SESSION_COOKIE_NAME, token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      secure: true,
+      sameSite: "none",
       path: "/",
       domain:"copropilot.app",
       
