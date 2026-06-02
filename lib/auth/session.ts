@@ -75,11 +75,21 @@ export async function createSessionToken(user: SessionUser) {
 export async function setSessionCookie(token: string) {
   const cookieStore = await cookies();
 
+  console.warn("[setSessionCookie] env", {
+    nodeEnv: process.env.NODE_ENV,
+    hasJwtSecret: Boolean(process.env.JWT_SECRET),
+    jwtSecretLength: process.env.JWT_SECRET?.length ?? 0,
+    tokenExists: Boolean(token),
+    tokenLength: token?.length ?? 0,
+    cookieName: SESSION_COOKIE_NAME,
+  });
+
+
   cookieStore.set({
     name: SESSION_COOKIE_NAME,
     value: token,
     httpOnly: true,
-    secure: true,
+    secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
     maxAge: SESSION_MAX_AGE_SECONDS,
@@ -138,7 +148,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
         unitId: true,
       },
     });
-    console.log("SESSION USER DEBUG", {
+    console.warn("SESSION USER DEBUG", {
       found: Boolean(user),
       id: user?.id,
       email: user?.email,
