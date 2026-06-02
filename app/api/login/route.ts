@@ -85,6 +85,8 @@ export async function POST(request: Request) {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
+      domain:"copropilot.app",
+      
       maxAge: SESSION_MAX_AGE_SECONDS,
     });
 
