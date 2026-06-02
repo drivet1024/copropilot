@@ -74,7 +74,7 @@ if (!isPasswordValid) {
 
   redirect("/login?error=invalid");
 }
-  }
+  
 
   console.log("[loginAction] password valid, creating session", {
     userId: user.id,
