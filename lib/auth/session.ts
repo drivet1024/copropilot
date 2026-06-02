@@ -147,6 +147,14 @@ export async function requireUser() {
 export async function requireRole(roles: UserRole[]) {
   const user = await requireUser();
 
+   console.log("REQUIRE ROLE DEBUG", {
+    userId: user.id,
+    email: user.email,
+    role: user.role,
+    status: user.status,
+    allowedRoles: roles,
+  });
+  
   if (!roles.includes(user.role)) {
     redirect("/unauthorized");
   }
