@@ -1,8 +1,17 @@
-import { redirect } from "next/navigation";
-import { destroySession } from "@/lib/auth/session";
+import { NextResponse } from "next/server";
 
-export async function GET() {
-  await destroySession();
+const SESSION_COOKIE_NAME = "copropilot_session";
 
-  redirect("/login");
+export async function GET(request: Request) {
+  console.log("[logout] START");
+
+  const response = NextResponse.redirect(new URL("/login", request.url));
+
+  response.cookies.delete(SESSION_COOKIE_NAME);
+
+  console.log("[logout] cookie deleted", {
+    cookieName: SESSION_COOKIE_NAME,
+  });
+
+  return response;
 }
