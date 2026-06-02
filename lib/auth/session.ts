@@ -1,4 +1,3 @@
-
 import { jwtVerify, SignJWT } from "jose";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -15,7 +14,7 @@ export type UserRole =
   | "OWNER"
   | "VIEWER";
 
-  export type UserStatus = "ACTIVE" | "INVITED" | "DISABLED";
+export type UserStatus = "ACTIVE" | "INVITED" | "DISABLED";
 
 export type SessionUser = {
   id: string;
@@ -38,13 +37,24 @@ type SessionTokenPayload = {
 };
 
 function getAuthSecret() {
-  const secret = process.env.AUTH_SECRET;
+  const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
 
   if (!secret) {
     throw new Error("AUTH_SECRET is required.");
   }
 
   return new TextEncoder().encode(secret);
+}
+
+function getCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: SESSION_MAX_AGE_SECONDS,
+    expires: new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000),
+  };
 }
 
 export async function createSessionToken(user: SessionUser) {
@@ -65,13 +75,7 @@ export async function createSessionToken(user: SessionUser) {
 export async function setSessionCookie(token: string) {
   const cookieStore = await cookies();
 
-  cookieStore.set(SESSION_COOKIE_NAME, token, {
-    httpOnly: true,
-    maxAge: SESSION_MAX_AGE_SECONDS,
-    path: "/",
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-  });
+  cookieStore.set(SESSION_COOKIE_NAME, token, getCookieOptions());
 }
 
 export async function clearSessionCookie() {
@@ -79,10 +83,11 @@ export async function clearSessionCookie() {
 
   cookieStore.set(SESSION_COOKIE_NAME, "", {
     httpOnly: true,
-    maxAge: 0,
-    path: "/",
+    secure: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 0,
+    expires: new Date(0),
   });
 }
 
@@ -123,7 +128,8 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     }
 
     return user;
-  } catch {
+  } catch (error) {
+    console.error("Invalid session token:", error);
     return null;
   }
 }
