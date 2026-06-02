@@ -47,14 +47,33 @@ export async function loginAction(formData: FormData) {
     redirect("/login?error=inactive");
   }
 
-  const isPasswordValid = await verifyPassword(password, user.passwordHash);
+ if (user.status !== "ACTIVE") {
+  console.log("[loginAction] user not active", {
+    userId: user.id,
+    status: user.status,
+  });
 
-  if (!isPasswordValid) {
-    console.log("[loginAction] invalid password", {
-      userId: user.id,
-    });
+  redirect("/login?error=inactive");
+}
 
-    redirect("/login?error=invalid");
+if (!user.passwordHash) {
+  console.log("[loginAction] user has no passwordHash", {
+    userId: user.id,
+    email: user.email,
+  });
+
+  redirect("/login?error=invalid");
+}
+
+const isPasswordValid = await verifyPassword(password, user.passwordHash);
+
+if (!isPasswordValid) {
+  console.log("[loginAction] invalid password", {
+    userId: user.id,
+  });
+
+  redirect("/login?error=invalid");
+}
   }
 
   console.log("[loginAction] password valid, creating session", {
