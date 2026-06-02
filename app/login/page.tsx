@@ -1,164 +1,78 @@
-import { redirect } from "next/navigation";
+import { loginAction } from "./actions";
 
-import { logAction } from "@/lib/audit/log-action";
-import { verifyPassword } from "@/lib/auth/password";
-import { createSessionToken, setSessionCookie } from "@/lib/auth/session";
-import { prisma } from "@/lib/db/prisma";
+type LoginPageProps = {
+  searchParams?: {
+    error?: string;
+  };
+};
 
-type LoginSearchParams = Promise<{
-  error?: string | string[];
-}>;
-
-function getSearchParam(value: string | string[] | undefined) {
-  if (Array.isArray(value)) {
-    return value[0]?.trim() ?? "";
-  }
-
-  return value?.trim() ?? "";
-}
-
-function getFormValue(formData: FormData, key: string) {
-  const value = formData.get(key);
-
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  return value.trim();
-}
-
-async function loginAction(formData: FormData) {
-  "use server";
-
-  const email = getFormValue(formData, "email").toLowerCase();
-  const password = getFormValue(formData, "password");
-
-  if (!email || !password) {
-    redirect("/login?error=1");
-  }
-
-  const user = await prisma.user.findUnique({
-    where: {
-      email,
-    },
-    select: {
-      condoId: true,
-      email: true,
-      id: true,
-      name: true,
-      organizationId: true,
-      passwordHash: true,
-      role: true,
-      status: true,
-      unitId: true,
-    },
-  });
-
-  if (!user || user.status !== "ACTIVE" || !user.passwordHash) {
-    redirect("/login?error=1");
-  }
-
-  const isValidPassword = await verifyPassword(password, user.passwordHash);
-
-  if (!isValidPassword) {
-    redirect("/login?error=1");
-  }
-
-  const updatedUser = await prisma.user.update({
-    where: {
-      id: user.id,
-    },
-    data: {
-      lastLoginAt: new Date(),
-    },
-    select: {
-      condoId: true,
-      email: true,
-      id: true,
-      name: true,
-      organizationId: true,
-      role: true,
-      status: true,
-      unitId: true,
-    },
-  });
-
-  const token = await createSessionToken(updatedUser);
-
-  await setSessionCookie(token);
-  await logAction({
-    action: "LOGIN_SUCCESS",
-    entity: "User",
-    entityId: updatedUser.id,
-    userId: updatedUser.id,
-  });
-
-  redirect("/dashboard");
-}
-
-export default async function LoginPage({
-  searchParams,
-}: {
-  searchParams?: LoginSearchParams;
-}) {
-  const params = searchParams ? await searchParams : {};
-  const hasError = getSearchParam(params.error) === "1";
+export default function LoginPage({ searchParams }: LoginPageProps) {
+  const error = searchParams?.error;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10 text-slate-950">
-      <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-        <div>
-          <p className="text-sm font-bold uppercase tracking-wide text-teal-600">
-            CoproPilot
-          </p>
-          <h1 className="mt-3 text-3xl font-bold text-slate-950">
-            Connexion à CoproPilot
-          </h1>
-          <p className="mt-3 text-base leading-7 text-slate-500">
-            Accédez à votre espace de gestion de copropriété.
-          </p>
-        </div>
+    <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-sm">
+        <h1 className="text-2xl font-semibold text-slate-900">
+          Connexion
+        </h1>
 
-        {hasError ? (
-          <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-            Email ou mot de passe invalide.
+        <p className="mt-2 text-sm text-slate-500">
+          Connectez-vous à CoproPilot.
+        </p>
+
+        {error ? (
+          <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+            {error === "missing" && "Veuillez entrer votre courriel et votre mot de passe."}
+            {error === "invalid" && "Courriel ou mot de passe invalide."}
+            {error === "inactive" && "Ce compte n’est pas actif."}
           </div>
         ) : null}
 
-        <form action={loginAction} className="mt-7 space-y-5">
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Email</span>
+        <form action={loginAction} className="mt-6 space-y-4">
+          <div>
+            <label
+              htmlFor="email"
+              className="block text-sm font-medium text-slate-700"
+            >
+              Courriel
+            </label>
+
             <input
+              id="email"
               name="email"
               type="email"
               required
               autoComplete="email"
-              placeholder="admin@copropilot.local"
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-base text-slate-950 outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
-          </label>
+          </div>
 
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-slate-700">
+          <div>
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-slate-700"
+            >
               Mot de passe
-            </span>
+            </label>
+
             <input
+              id="password"
               name="password"
               type="password"
               required
               autoComplete="current-password"
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-base text-slate-950 outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
-          </label>
+          </div>
 
           <button
             type="submit"
-            className="w-full rounded-xl bg-teal-600 px-5 py-3 text-base font-bold text-white shadow-sm transition hover:bg-teal-700"
+            className="w-full rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700"
           >
             Se connecter
           </button>
         </form>
-      </section>
+      </div>
     </main>
   );
 }

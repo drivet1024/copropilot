@@ -2,10 +2,8 @@ import { jwtVerify, SignJWT } from "jose";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { prisma } from "@/lib/db/prisma";
-
-const SESSION_COOKIE_NAME = "copropilot_session";
-const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
+export const SESSION_COOKIE_NAME = "copropilot_session";
+export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 
 export type UserRole =
   | "MASTER_USER"
@@ -22,106 +20,57 @@ export type SessionUser = {
   name: string | null;
   role: UserRole;
   status: UserStatus;
-  organizationId: string | null;
-  condoId: string | null;
-  unitId: string | null;
 };
 
-type SessionTokenPayload = {
-  userId: string;
-  email: string;
-  role: UserRole;
-  organizationId?: string | null;
-  condoId?: string | null;
-  unitId?: string | null;
-};
-
-function getAuthSecret() {
-  const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+function getJwtSecret() {
+  const secret = process.env.JWT_SECRET;
 
   if (!secret) {
-    throw new Error("AUTH_SECRET is required.");
+    console.error("[auth/session] JWT_SECRET is missing");
+    throw new Error("JWT_SECRET is missing");
   }
 
   return new TextEncoder().encode(secret);
 }
 
-function getCookieOptions() {
-  return {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax" as const,
-    path: "/",
-    maxAge: SESSION_MAX_AGE_SECONDS,
-    expires: new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000),
-  };
-}
-
-export async function createSessionToken(user: SessionUser) {
-  return new SignJWT({
+export async function createSession(user: SessionUser) {
+  console.log("[createSession] START", {
     userId: user.id,
     email: user.email,
     role: user.role,
-    organizationId: user.organizationId,
-    condoId: user.condoId,
-    unitId: user.unitId,
-  } satisfies SessionTokenPayload)
-    .setProtectedHeader({ alg: "HS256" })
-    .setIssuedAt()
-    .setExpirationTime("7d")
-    .sign(getAuthSecret());
-}
-
-export async function setSessionCookie(token: string) {
-  const cookieStore = await cookies();
-
-  console.warn("[setSessionCookie] env", {
+    status: user.status,
     nodeEnv: process.env.NODE_ENV,
     hasJwtSecret: Boolean(process.env.JWT_SECRET),
     jwtSecretLength: process.env.JWT_SECRET?.length ?? 0,
-    tokenExists: Boolean(token),
-    tokenLength: token?.length ?? 0,
-    cookieName: SESSION_COOKIE_NAME,
   });
 
+  const token = await new SignJWT({ user })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("7d")
+    .sign(getJwtSecret());
 
-  cookieStore.set({
-    name: SESSION_COOKIE_NAME,
-    value: token,
+  console.log("[createSession] token created", {
+    tokenLength: token.length,
+  });
+
+  const cookieStore = await cookies();
+
+  cookieStore.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
     maxAge: SESSION_MAX_AGE_SECONDS,
-    expires: new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000),
   });
 
-  console.warn("[setSessionCookie] after set", {
-      cookieName: SESSION_COOKIE_NAME,
-      path: "/",
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: SESSION_MAX_AGE_SECONDS,
-      cookieNowReadableServerSide: Boolean(
-        cookieStore.get(SESSION_COOKIE_NAME)?.value
-      ),
-    });
-
-}
-
-export async function clearSessionCookie() {
-  const cookieStore = await cookies();
-
-  cookieStore.set({
-    name: SESSION_COOKIE_NAME,
-    value: "",
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
+  console.log("[createSession] cookie set", {
+    cookieName: SESSION_COOKIE_NAME,
     path: "/",
-    maxAge: 0,
-    expires: new Date(0),
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: SESSION_MAX_AGE_SECONDS,
+    readableImmediately: Boolean(cookieStore.get(SESSION_COOKIE_NAME)?.value),
   });
 }
 
@@ -129,53 +78,27 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
-  console.warn("SESSION DEBUG", {
-  hasToken: Boolean(token),
-  cookieName: SESSION_COOKIE_NAME,
-});
+  console.log("[getSessionUser] SESSION DEBUG", {
+    hasToken: Boolean(token),
+    cookieName: SESSION_COOKIE_NAME,
+  });
 
   if (!token) {
     return null;
   }
 
   try {
-    const { payload } = await jwtVerify(token, getAuthSecret());
-    const userId = payload.userId;
+    const verified = await jwtVerify(token, getJwtSecret());
+    const payload = verified.payload as { user?: SessionUser };
 
-    if (typeof userId !== "string") {
+    if (!payload.user) {
+      console.log("[getSessionUser] no user in token payload");
       return null;
     }
 
-    const user = await prisma.user.findUnique({
-      where: {
-        id: userId,
-      },
-      select: {
-        condoId: true,
-        email: true,
-        id: true,
-        name: true,
-        organizationId: true,
-        role: true,
-        status: true,
-        unitId: true,
-      },
-    });
-    console.warn("SESSION USER DEBUG", {
-      found: Boolean(user),
-      id: user?.id,
-      email: user?.email,
-      role: user?.role,
-      status: user?.status,
-    });
-
-    if (!user || user.status !== "ACTIVE") {
-      return null;
-    }
-
-    return user;
+    return payload.user;
   } catch (error) {
-    console.error("Invalid session token:", error);
+    console.error("[getSessionUser] jwt verify failed", error);
     return null;
   }
 }
@@ -187,23 +110,35 @@ export async function requireUser() {
     redirect("/login");
   }
 
+  if (user.status !== "ACTIVE") {
+    redirect("/login");
+  }
+
   return user;
 }
 
 export async function requireRole(roles: UserRole[]) {
   const user = await requireUser();
 
-   console.log("REQUIRE ROLE DEBUG", {
-    userId: user.id,
-    email: user.email,
-    role: user.role,
-    status: user.status,
+  console.log("[requireRole] checking role", {
+    userRole: user.role,
     allowedRoles: roles,
+    status: user.status,
   });
 
   if (!roles.includes(user.role)) {
-    redirect("/unauthorized");
+    redirect("/dashboard");
   }
 
   return user;
+}
+
+export async function destroySession() {
+  const cookieStore = await cookies();
+
+  cookieStore.delete(SESSION_COOKIE_NAME);
+
+  console.log("[destroySession] cookie deleted", {
+    cookieName: SESSION_COOKIE_NAME,
+  });
 }
