@@ -1,8 +1,15 @@
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { Prisma } from "@prisma/client";
 
-import { requireRole } from "@/lib/auth/session";
+import {
+  assertBuildingAccess,
+  assertCondoAccess,
+  getBuildingWhereForUser,
+  getCondoWhereForUser,
+} from "@/lib/auth/tenant-access";
+import { requireRole, requireUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 
 const dateFormatter = new Intl.DateTimeFormat("fr-CA", {
@@ -142,8 +149,13 @@ function BuildingFormFields({
 async function createBuilding(formData: FormData) {
   "use server";
 
+  const user = await requireRole(["MASTER_USER", "CONDO_MANAGER"]);
+  const data = getBuildingData(formData);
+
+  assertCondoAccess(user, data.condoId);
+
   await prisma.building.create({
-    data: getBuildingData(formData),
+    data,
   });
 
   revalidatePath("/buildings");
@@ -153,15 +165,21 @@ async function createBuilding(formData: FormData) {
 async function updateBuilding(formData: FormData) {
   "use server";
 
+  const user = await requireRole(["MASTER_USER", "CONDO_MANAGER"]);
   const id = getFormValue(formData, "id");
 
   if (!id) {
     throw new Error("L’identifiant de l’immeuble est obligatoire.");
   }
 
+  const data = getBuildingData(formData);
+
+  await assertBuildingAccess(user, id);
+  assertCondoAccess(user, data.condoId);
+
   await prisma.building.update({
     where: { id },
-    data: getBuildingData(formData),
+    data,
   });
 
   revalidatePath("/buildings");
@@ -171,6 +189,7 @@ async function updateBuilding(formData: FormData) {
 async function deleteBuilding(formData: FormData) {
   "use server";
 
+  const user = await requireRole(["MASTER_USER", "CONDO_MANAGER"]);
   const id = getFormValue(formData, "id");
 
   if (!id) {
@@ -187,6 +206,8 @@ async function deleteBuilding(formData: FormData) {
   if (!building) {
     throw new Error("Immeuble introuvable.");
   }
+
+  assertCondoAccess(user, building.condoId);
 
   if (building.units.length > 0) {
     throw new Error(
@@ -207,15 +228,23 @@ export default async function BuildingsPage({
 }: {
   searchParams?: BuildingsSearchParams;
 }) {
-  await requireRole(["MASTER_USER", "CONDO_MANAGER"]);
+  const user = await requireUser();
+  const canManageBuildings =
+    user.role === "MASTER_USER" || user.role === "CONDO_MANAGER";
+  const tenantBuildingWhere = getBuildingWhereForUser(user);
+  const tenantCondoWhere = getCondoWhereForUser(user);
 
   const params = searchParams ? await searchParams : {};
   const q = getSearchParam(params.q);
   const selectedCondoId = getSearchParam(params.condoId);
   const editBuildingId = getSearchParam(params.edit);
   const isNewBuildingModalOpen =
-    getSearchParam(params.new) === "1" && !editBuildingId;
-  const filters = [];
+    canManageBuildings && getSearchParam(params.new) === "1" && !editBuildingId;
+  const filters: Prisma.BuildingWhereInput[] = [];
+
+  if (tenantBuildingWhere) {
+    filters.push(tenantBuildingWhere);
+  }
 
   if (selectedCondoId) {
     filters.push({ condoId: selectedCondoId });
@@ -235,7 +264,8 @@ export default async function BuildingsPage({
     });
   }
 
-  const buildingWhere = filters.length > 0 ? { AND: filters } : undefined;
+  const buildingWhere: Prisma.BuildingWhereInput | undefined =
+    filters.length > 0 ? { AND: filters } : undefined;
 
   const [buildingsRaw, condosRaw, selectedBuilding] = await Promise.all([
     prisma.building.findMany({
@@ -249,13 +279,19 @@ export default async function BuildingsPage({
       },
     }),
     prisma.condo.findMany({
+      where: tenantCondoWhere,
       orderBy: {
         name: "asc",
       },
     }),
-    editBuildingId
-      ? prisma.building.findUnique({
-          where: { id: editBuildingId },
+    canManageBuildings && editBuildingId
+      ? prisma.building.findFirst({
+          where: {
+            AND: [
+              { id: editBuildingId },
+              ...(tenantBuildingWhere ? [tenantBuildingWhere] : []),
+            ],
+          },
           include: {
             condo: true,
           },
@@ -372,12 +408,14 @@ export default async function BuildingsPage({
             </p>
           </div>
 
-          <Link
-            href="/buildings?new=1"
-            className="inline-flex h-11 items-center justify-center rounded-xl bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700"
-          >
-            Ajouter un immeuble
-          </Link>
+          {canManageBuildings ? (
+            <Link
+              href="/buildings?new=1"
+              className="inline-flex h-11 items-center justify-center rounded-xl bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700"
+            >
+              Ajouter un immeuble
+            </Link>
+          ) : null}
         </div>
 
         {buildings.length === 0 ? (
@@ -395,7 +433,7 @@ export default async function BuildingsPage({
                     "Copropriété",
                     "Unités",
                     "Créé le",
-                    "Actions",
+                    ...(canManageBuildings ? ["Actions"] : []),
                   ].map((header) => (
                     <th
                       key={header}
@@ -430,33 +468,35 @@ export default async function BuildingsPage({
                     <td className="whitespace-nowrap px-4 py-4 text-slate-500">
                       {dateFormatter.format(building.createdAt)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-4">
-                      <div className="flex items-center gap-2">
-                        <Link
-                          href={`/buildings?edit=${encodeURIComponent(
-                            building.id
-                          )}`}
-                          className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
-                        >
-                          Modifier
-                        </Link>
-                        <form action={deleteBuilding} className="m-0">
-                          <input type="hidden" name="id" value={building.id} />
-                          <button
-                            type="submit"
-                            disabled={building.units.length > 0}
-                            title={
-                              building.units.length > 0
-                                ? "Retirez d’abord les unités associées."
-                                : undefined
-                            }
-                            className="inline-flex h-10 items-center justify-center rounded-lg border border-red-200 px-4 text-sm font-bold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                    {canManageBuildings ? (
+                      <td className="whitespace-nowrap px-4 py-4">
+                        <div className="flex items-center gap-2">
+                          <Link
+                            href={`/buildings?edit=${encodeURIComponent(
+                              building.id
+                            )}`}
+                            className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
                           >
-                            Supprimer
-                          </button>
-                        </form>
-                      </div>
-                    </td>
+                            Modifier
+                          </Link>
+                          <form action={deleteBuilding} className="m-0">
+                            <input type="hidden" name="id" value={building.id} />
+                            <button
+                              type="submit"
+                              disabled={building.units.length > 0}
+                              title={
+                                building.units.length > 0
+                                  ? "Retirez d’abord les unités associées."
+                                  : undefined
+                              }
+                              className="inline-flex h-10 items-center justify-center rounded-lg border border-red-200 px-4 text-sm font-bold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                            >
+                              Supprimer
+                            </button>
+                          </form>
+                        </div>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -535,7 +575,7 @@ export default async function BuildingsPage({
         </>
       ) : null}
 
-      {selectedBuilding ? (
+      {canManageBuildings && selectedBuilding ? (
         <>
           <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm" />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -598,7 +638,7 @@ export default async function BuildingsPage({
             </section>
           </div>
         </>
-      ) : editBuildingId ? (
+      ) : canManageBuildings && editBuildingId ? (
         <>
           <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm" />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

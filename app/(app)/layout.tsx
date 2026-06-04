@@ -2,10 +2,22 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
+import { isMasterUser } from "@/lib/auth/tenant-access";
 import { requireUser } from "@/lib/auth/session";
+import { prisma } from "@/lib/db/prisma";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const user = await requireUser();
+  const activeCondoName = isMasterUser(user)
+    ? "Toutes les copropriétés"
+    : user.condoId
+      ? (
+          await prisma.condo.findUnique({
+            where: { id: user.condoId },
+            select: { name: true },
+          })
+        )?.name ?? "Copropriété introuvable"
+      : "Aucune copropriété assignée";
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-950">
@@ -30,6 +42,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
                 </p>
                 <p className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
                   {user.role}
+                </p>
+                <p className="mt-1 text-sm font-semibold text-teal-700">
+                  {activeCondoName}
                 </p>
               </div>
               <Link

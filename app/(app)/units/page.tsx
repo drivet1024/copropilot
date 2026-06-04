@@ -1,8 +1,15 @@
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { Prisma } from "@prisma/client";
 
-import { requireRole } from "@/lib/auth/session";
+import {
+  assertBuildingAccess,
+  assertUnitAccess,
+  getBuildingWhereForUser,
+  getUnitWhereForUser,
+} from "@/lib/auth/tenant-access";
+import { requireRole, requireUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 
 const dateFormatter = new Intl.DateTimeFormat("fr-CA", {
@@ -19,23 +26,6 @@ type UnitsSearchParams = Promise<{
   edit?: string | string[];
   new?: string | string[];
 }>;
-
-type UnitTextSearchFilter = {
-  contains: string;
-  mode: "insensitive";
-};
-
-type UnitWhereFilter = {
-  buildingId?: string;
-  OR?: Array<{
-    number?: UnitTextSearchFilter;
-    ownerName?: UnitTextSearchFilter;
-    phone?: UnitTextSearchFilter;
-    mobile?: UnitTextSearchFilter;
-    email?: UnitTextSearchFilter;
-  }>;
-  AND?: UnitWhereFilter[];
-};
 
 type UnitListItem = {
   id: string;
@@ -447,8 +437,13 @@ function UnitFormFields({
 async function createUnit(formData: FormData) {
   "use server";
 
+  const user = await requireRole(["MASTER_USER", "CONDO_MANAGER"]);
+  const data = getUnitData(formData);
+
+  await assertBuildingAccess(user, data.buildingId);
+
   await prisma.unit.create({
-    data: getUnitData(formData),
+    data,
   });
 
   revalidatePath("/units");
@@ -458,15 +453,21 @@ async function createUnit(formData: FormData) {
 async function updateUnit(formData: FormData) {
   "use server";
 
+  const user = await requireRole(["MASTER_USER", "CONDO_MANAGER"]);
   const id = getFormValue(formData, "id");
 
   if (!id) {
     throw new Error("L’identifiant de l’unité est obligatoire.");
   }
 
+  const data = getUnitData(formData);
+
+  await assertUnitAccess(user, id);
+  await assertBuildingAccess(user, data.buildingId);
+
   await prisma.unit.update({
     where: { id },
-    data: getUnitData(formData),
+    data,
   });
 
   revalidatePath("/units");
@@ -476,15 +477,16 @@ async function updateUnit(formData: FormData) {
 async function deleteUnit(formData: FormData) {
   "use server";
 
+  const user = await requireRole(["MASTER_USER", "CONDO_MANAGER"]);
   const id = getFormValue(formData, "id");
 
   if (!id) {
     throw new Error("L’identifiant de l’unité est obligatoire.");
   }
 
-  await prisma.unit.delete({
-    where: { id },
-  });
+  await assertUnitAccess(user, id);
+
+  await prisma.unit.delete({ where: { id } });
 
   revalidatePath("/units");
   redirect("/units");
@@ -495,14 +497,23 @@ export default async function UnitsPage({
 }: {
   searchParams?: UnitsSearchParams;
 }) {
-  await requireRole(["MASTER_USER", "CONDO_MANAGER"]);
+  const user = await requireUser();
+  const canManageUnits =
+    user.role === "MASTER_USER" || user.role === "CONDO_MANAGER";
+  const tenantBuildingWhere = getBuildingWhereForUser(user);
+  const tenantUnitWhere = getUnitWhereForUser(user);
 
   const params = searchParams ? await searchParams : {};
   const q = getSearchParam(params.q);
   const selectedBuildingId = getSearchParam(params.buildingId);
   const editUnitId = getSearchParam(params.edit);
-  const isNewUnitModalOpen = getSearchParam(params.new) === "1" && !editUnitId;
-  const filters: UnitWhereFilter[] = [];
+  const isNewUnitModalOpen =
+    canManageUnits && getSearchParam(params.new) === "1" && !editUnitId;
+  const filters: Prisma.UnitWhereInput[] = [];
+
+  if (tenantUnitWhere) {
+    filters.push(tenantUnitWhere);
+  }
 
   if (selectedBuildingId) {
     filters.push({ buildingId: selectedBuildingId });
@@ -520,7 +531,7 @@ export default async function UnitsPage({
     });
   }
 
-  const unitWhere: UnitWhereFilter | undefined =
+  const unitWhere: Prisma.UnitWhereInput | undefined =
     filters.length > 0 ? { AND: filters } : undefined;
 
   const [unitsRaw, buildingsRaw, selectedUnitRaw] = await Promise.all([
@@ -539,6 +550,7 @@ export default async function UnitsPage({
       },
     }),
     prisma.building.findMany({
+      where: tenantBuildingWhere,
       include: {
         condo: true,
         units: true,
@@ -547,9 +559,14 @@ export default async function UnitsPage({
         name: "asc",
       },
     }),
-    editUnitId
-      ? prisma.unit.findUnique({
-          where: { id: editUnitId },
+    canManageUnits && editUnitId
+      ? prisma.unit.findFirst({
+          where: {
+            AND: [
+              { id: editUnitId },
+              ...(tenantUnitWhere ? [tenantUnitWhere] : []),
+            ],
+          },
           include: {
             building: {
               include: {
@@ -660,12 +677,14 @@ export default async function UnitsPage({
             </p>
           </div>
 
-          <Link
-            href="/units?new=1"
-            className="inline-flex h-11 items-center justify-center rounded-xl bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700"
-          >
-            Ajouter une unité
-          </Link>
+          {canManageUnits ? (
+            <Link
+              href="/units?new=1"
+              className="inline-flex h-11 items-center justify-center rounded-xl bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700"
+            >
+              Ajouter une unité
+            </Link>
+          ) : null}
         </div>
 
         {units.length === 0 ? (
@@ -684,7 +703,7 @@ export default async function UnitsPage({
                     "Contact",
                     "Caractéristiques",
                     "Assurance",
-                    "Actions",
+                    ...(canManageUnits ? ["Actions"] : []),
                   ].map((header: string) => (
                     <th
                       key={header}
@@ -744,25 +763,27 @@ export default async function UnitsPage({
                     <td className="whitespace-nowrap px-4 py-4 text-[15px] text-slate-600">
                       {formatDate(unit.insuranceRenewalDate)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-4">
-                      <div className="flex items-center gap-2">
-                        <Link
-                          href={`/units?edit=${encodeURIComponent(unit.id)}`}
-                          className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
-                        >
-                          Modifier
-                        </Link>
-                        <form action={deleteUnit} className="m-0">
-                          <input type="hidden" name="id" value={unit.id} />
-                          <button
-                            type="submit"
-                            className="inline-flex h-10 items-center justify-center rounded-lg border border-red-200 px-4 text-sm font-bold text-red-700 transition hover:bg-red-50"
+                    {canManageUnits ? (
+                      <td className="whitespace-nowrap px-4 py-4">
+                        <div className="flex items-center gap-2">
+                          <Link
+                            href={`/units?edit=${encodeURIComponent(unit.id)}`}
+                            className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
                           >
-                            Supprimer
-                          </button>
-                        </form>
-                      </div>
-                    </td>
+                            Modifier
+                          </Link>
+                          <form action={deleteUnit} className="m-0">
+                            <input type="hidden" name="id" value={unit.id} />
+                            <button
+                              type="submit"
+                              className="inline-flex h-10 items-center justify-center rounded-lg border border-red-200 px-4 text-sm font-bold text-red-700 transition hover:bg-red-50"
+                            >
+                              Supprimer
+                            </button>
+                          </form>
+                        </div>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -842,7 +863,7 @@ export default async function UnitsPage({
         </>
       ) : null}
 
-      {selectedUnit ? (
+      {canManageUnits && selectedUnit ? (
         <>
           <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm" />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -904,7 +925,7 @@ export default async function UnitsPage({
             </section>
           </div>
         </>
-      ) : editUnitId ? (
+      ) : canManageUnits && editUnitId ? (
         <>
           <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm" />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

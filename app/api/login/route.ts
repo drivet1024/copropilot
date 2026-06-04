@@ -68,6 +68,9 @@ export async function POST(request: Request) {
         name: user.name,
         role: user.role,
         status: user.status,
+        organizationId: user.organizationId,
+        condoId: user.condoId,
+        unitId: user.unitId,
       },
     })
       .setProtectedHeader({ alg: "HS256" })
@@ -80,15 +83,20 @@ export async function POST(request: Request) {
       redirectTo: "/dashboard",
     });
 
-    response.cookies.set(SESSION_COOKIE_NAME, token, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      path: "/",
-      domain:"copropilot.app",
-      
-      maxAge: SESSION_MAX_AGE_SECONDS,
-    });
+    const isProduction = process.env.NODE_ENV === "production";
+
+response.cookies.set(SESSION_COOKIE_NAME, token, {
+  httpOnly: true,
+  secure: isProduction,
+  sameSite: isProduction ? "none" : "lax",
+  path: "/",
+  maxAge: SESSION_MAX_AGE_SECONDS,
+  ...(isProduction
+    ? {
+        domain: "copropilot.app",
+      }
+    : {}),
+});
 
     console.log("[api/login] cookie set", {
       cookieName: SESSION_COOKIE_NAME,

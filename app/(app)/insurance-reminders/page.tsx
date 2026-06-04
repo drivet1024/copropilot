@@ -1,3 +1,8 @@
+import {
+  getInsuranceReminderLogWhereForUser,
+  getUnitWhereForUser,
+} from "@/lib/auth/tenant-access";
+import { requireUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 
 
@@ -102,12 +107,21 @@ function getStatusClass(status: string) {
 }
 
 export default async function InsuranceRemindersPage() {
+  const user = await requireUser();
+  const unitWhere = getUnitWhereForUser(user);
+  const reminderLogWhere = getInsuranceReminderLogWhereForUser(user);
+
   const [renewalUnitsRaw, reminderLogsRaw] = await Promise.all([
     prisma.unit.findMany({
       where: {
-        insuranceRenewalDate: {
-          not: null,
-        },
+        AND: [
+          ...(unitWhere ? [unitWhere] : []),
+          {
+            insuranceRenewalDate: {
+              not: null,
+            },
+          },
+        ],
       },
       include: {
         building: {
@@ -121,6 +135,7 @@ export default async function InsuranceRemindersPage() {
       },
     }),
     prisma.insuranceReminderLog.findMany({
+      where: reminderLogWhere,
       include: {
         unit: {
           include: {

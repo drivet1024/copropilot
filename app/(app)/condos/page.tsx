@@ -1,8 +1,10 @@
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { Prisma } from "@prisma/client";
 
-import { requireRole } from "@/lib/auth/session";
+import { isMasterUser, getCondoWhereForUser } from "@/lib/auth/tenant-access";
+import { requireRole, requireUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 
 const dateFormatter = new Intl.DateTimeFormat("fr-CA", {
@@ -29,22 +31,6 @@ type CondoFormCondo = {
   name?: string;
   address?: string | null;
   organizationId?: string;
-};
-
-type TextSearchFilter = {
-  contains: string;
-  mode: "insensitive";
-};
-
-type CondoWhereFilter = {
-  organizationId?: string;
-  OR?: Array<{
-    name?: TextSearchFilter;
-    address?: TextSearchFilter;
-    organization?: {
-      name: TextSearchFilter;
-    };
-  }>;
 };
 
 type CondoBuildingListItem = {
@@ -210,6 +196,8 @@ function CondoFormFields({
 async function createCondo(formData: FormData) {
   "use server";
 
+  await requireRole(["MASTER_USER"]);
+
   await prisma.condo.create({
     data: await getCondoData(formData),
   });
@@ -220,6 +208,8 @@ async function createCondo(formData: FormData) {
 
 async function updateCondo(formData: FormData) {
   "use server";
+
+  await requireRole(["MASTER_USER"]);
 
   const id = getFormValue(formData, "id");
 
@@ -238,6 +228,8 @@ async function updateCondo(formData: FormData) {
 
 async function deleteCondo(formData: FormData) {
   "use server";
+
+  await requireRole(["MASTER_USER"]);
 
   const id = getFormValue(formData, "id");
 
@@ -283,15 +275,21 @@ export default async function CondosPage({
 }: {
   searchParams?: CondosSearchParams;
 }) {
-  await requireRole(["MASTER_USER", "CONDO_MANAGER"]);
+  const user = await requireUser();
+  const canManageCondos = isMasterUser(user);
+  const tenantWhere = getCondoWhereForUser(user);
 
   const params = searchParams ? await searchParams : {};
   const q = getSearchParam(params.q);
   const selectedOrganizationId = getSearchParam(params.organizationId);
   const editCondoId = getSearchParam(params.edit);
   const isNewCondoModalOpen =
-    getSearchParam(params.new) === "1" && !editCondoId;
-  const filters: CondoWhereFilter[] = [];
+    canManageCondos && getSearchParam(params.new) === "1" && !editCondoId;
+  const filters: Prisma.CondoWhereInput[] = [];
+
+  if (tenantWhere) {
+    filters.push(tenantWhere);
+  }
 
   if (selectedOrganizationId) {
     filters.push({ organizationId: selectedOrganizationId });
@@ -311,7 +309,8 @@ export default async function CondosPage({
     });
   }
 
-  const condoWhere = filters.length > 0 ? { AND: filters } : undefined;
+  const condoWhere: Prisma.CondoWhereInput | undefined =
+    filters.length > 0 ? { AND: filters } : undefined;
 
   const [condosRaw, organizationsRaw, selectedCondoRaw] = await Promise.all([
     prisma.condo.findMany({
@@ -332,13 +331,22 @@ export default async function CondosPage({
       },
     }),
     prisma.organization.findMany({
+      where: canManageCondos
+        ? undefined
+        : {
+            condos: {
+              some: tenantWhere,
+            },
+          },
       orderBy: {
         name: "asc",
       },
     }),
-    editCondoId
-      ? prisma.condo.findUnique({
-          where: { id: editCondoId },
+    canManageCondos && editCondoId
+      ? prisma.condo.findFirst({
+          where: {
+            AND: [{ id: editCondoId }, ...(tenantWhere ? [tenantWhere] : [])],
+          },
           include: {
             organization: true,
           },
@@ -471,12 +479,14 @@ export default async function CondosPage({
             </p>
           </div>
 
-          <Link
-            href="/condos?new=1"
-            className="inline-flex h-11 items-center justify-center rounded-xl bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700"
-          >
-            Ajouter une copropriété
-          </Link>
+          {canManageCondos ? (
+            <Link
+              href="/condos?new=1"
+              className="inline-flex h-11 items-center justify-center rounded-xl bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700"
+            >
+              Ajouter une copropriété
+            </Link>
+          ) : null}
         </div>
 
         {condos.length === 0 ? (
@@ -498,7 +508,7 @@ export default async function CondosPage({
                     "Entretiens",
                     "Fournisseurs",
                     "Créée le",
-                    "Actions",
+                    ...(canManageCondos ? ["Actions"] : []),
                   ].map((header) => (
                     <th
                       key={header}
@@ -559,33 +569,35 @@ export default async function CondosPage({
                       <td className="whitespace-nowrap px-4 py-4 text-slate-500">
                         {dateFormatter.format(condo.createdAt)}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-4">
-                        <div className="flex items-center gap-2">
-                          <Link
-                            href={`/condos?edit=${encodeURIComponent(
-                              condo.id
-                            )}`}
-                            className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
-                          >
-                            Modifier
-                          </Link>
-                          <form action={deleteCondo} className="m-0">
-                            <input type="hidden" name="id" value={condo.id} />
-                            <button
-                              type="submit"
-                              disabled={isDeleteBlocked}
-                              title={
-                                isDeleteBlocked
-                                  ? "Retirez d’abord les dossiers associés."
-                                  : undefined
-                              }
-                              className="inline-flex h-10 items-center justify-center rounded-lg border border-red-200 px-4 text-sm font-bold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                      {canManageCondos ? (
+                        <td className="whitespace-nowrap px-4 py-4">
+                          <div className="flex items-center gap-2">
+                            <Link
+                              href={`/condos?edit=${encodeURIComponent(
+                                condo.id
+                              )}`}
+                              className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
                             >
-                              Supprimer
-                            </button>
-                          </form>
-                        </div>
-                      </td>
+                              Modifier
+                            </Link>
+                            <form action={deleteCondo} className="m-0">
+                              <input type="hidden" name="id" value={condo.id} />
+                              <button
+                                type="submit"
+                                disabled={isDeleteBlocked}
+                                title={
+                                  isDeleteBlocked
+                                    ? "Retirez d’abord les dossiers associés."
+                                    : undefined
+                                }
+                                className="inline-flex h-10 items-center justify-center rounded-lg border border-red-200 px-4 text-sm font-bold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                              >
+                                Supprimer
+                              </button>
+                            </form>
+                          </div>
+                        </td>
+                      ) : null}
                     </tr>
                   );
                 })}
@@ -662,7 +674,7 @@ export default async function CondosPage({
         </>
       ) : null}
 
-      {selectedCondo ? (
+      {canManageCondos && selectedCondo ? (
         <>
           <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm" />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -725,7 +737,7 @@ export default async function CondosPage({
             </section>
           </div>
         </>
-      ) : editCondoId ? (
+      ) : canManageCondos && editCondoId ? (
         <>
           <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm" />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

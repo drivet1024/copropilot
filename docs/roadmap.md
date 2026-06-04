@@ -35,24 +35,46 @@ Livrables :
 
 ## Phase 1 — Authentification et base SaaS
 
-Objectif : permettre à plusieurs organisations d’utiliser la plateforme de façon isolée.
+Objectif : permettre à plusieurs copropriétés d’utiliser la plateforme de façon isolée.
+
+Statut : terminé.
+
+Modèle MVP :
+- `MASTER_USER` crée et administre les tenants.
+- `Condo` agit comme tenant applicatif.
+- Chaque utilisateur non-master est rattaché à une seule copropriété via `User.condoId`.
+- Les données des rôles non-master sont filtrées par copropriété.
+
+Section technique — isolation tenant :
+- Le tenant applicatif est le modèle `Condo`; il représente une seule copropriété gérée dans CoproPilot.
+- Le rôle `MASTER_USER` a une portée globale : il peut créer, modifier et voir toutes les copropriétés.
+- Les rôles `CONDO_MANAGER`, `BOARD_MEMBER`, `OWNER` et `VIEWER` ont une portée limitée à `User.condoId`.
+- Un utilisateur non-master sans `condoId` ne doit pas obtenir de données tenant.
+- Les filtres de lecture et les validations d’écriture passent par `lib/auth/tenant-access.ts`.
 
 Tâches :
 - Créer le modèle User
 - Ajouter l’authentification
-- Créer le modèle Tenant
-- Créer le modèle Membership
 - Créer les rôles de base
 - Protéger les routes privées
 - Créer un tableau de bord de base
-- Créer un sélecteur d’organisation
+
+Terminé dans la phase :
+- Formaliser `Condo` comme tenant dans la documentation technique
+- Associer obligatoirement les utilisateurs non-master à une copropriété
+- Permettre au `MASTER_USER` de créer les copropriétés/tenants
+- Filtrer les listes et tableaux de bord par `user.condoId` pour les rôles non-master
+- Empêcher l’accès direct à une copropriété, un immeuble ou une unité d’un autre tenant
+- Afficher la copropriété active dans le header
+- Ajouter une vérification serveur commune pour les accès par copropriété
 - Ajouter les premiers tests de permissions
 
 Livrables :
 - Connexion utilisateur
 - Dashboard privé
-- Structure multi-tenant
-- Accès sécurisé par organisation
+- Création de tenants par `MASTER_USER`
+- Structure multi-tenant basée sur `Condo`
+- Accès sécurisé par copropriété
 
 ---
 

@@ -19,6 +19,9 @@ export type SessionUser = {
   name: string | null;
   role: UserRole;
   status: UserStatus;
+  organizationId: string | null;
+  condoId: string | null;
+  unitId: string | null;
 };
 
 function getJwtSecret() {
@@ -36,13 +39,6 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
-  console.log("[getSessionUser] SESSION DEBUG", {
-    hasToken: Boolean(token),
-    cookieName: SESSION_COOKIE_NAME,
-    hasJwtSecret: Boolean(process.env.JWT_SECRET),
-    jwtSecretLength: process.env.JWT_SECRET?.length ?? 0,
-  });
-
   if (!token) {
     return null;
   }
@@ -50,14 +46,6 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   try {
     const verified = await jwtVerify(token, getJwtSecret());
     const payload = verified.payload as { user?: SessionUser };
-
-    console.log("[getSessionUser] jwt verified", {
-      hasUser: Boolean(payload.user),
-      userId: payload.user?.id,
-      email: payload.user?.email,
-      role: payload.user?.role,
-      status: payload.user?.status,
-    });
 
     if (!payload.user) {
       return null;
@@ -79,16 +67,10 @@ export async function requireUser() {
   const user = await getSessionUser();
 
   if (!user) {
-    console.log("[requireUser] no user, redirecting to login");
     redirect("/login");
   }
 
   if (user.status !== "ACTIVE") {
-    console.log("[requireUser] user not active", {
-      userId: user.id,
-      status: user.status,
-    });
-
     redirect("/login");
   }
 
@@ -98,20 +80,7 @@ export async function requireUser() {
 export async function requireRole(roles: UserRole[]) {
   const user = await requireUser();
 
-  console.log("[requireRole] checking role", {
-    userId: user.id,
-    email: user.email,
-    userRole: user.role,
-    allowedRoles: roles,
-    status: user.status,
-  });
-
   if (!roles.includes(user.role)) {
-    console.log("[requireRole] role not allowed, redirecting dashboard", {
-      userRole: user.role,
-      allowedRoles: roles,
-    });
-
     redirect("/dashboard");
   }
 

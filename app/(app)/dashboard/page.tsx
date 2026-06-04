@@ -1,3 +1,12 @@
+import {
+  getBuildingWhereForUser,
+  getCondoWhereForUser,
+  getDocumentWhereForUser,
+  getMaintenanceWhereForUser,
+  getUnitWhereForUser,
+  getVendorWhereForUser,
+} from "@/lib/auth/tenant-access";
+import { requireUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 
 type DashboardBuilding = {
@@ -16,6 +25,24 @@ type DashboardCondo = {
 };
 
 export default async function DashboardPage() {
+  const user = await requireUser();
+  const condoWhere = getCondoWhereForUser(user);
+  const buildingWhere = getBuildingWhereForUser(user);
+  const unitWhere = getUnitWhereForUser(user);
+  const documentWhere = getDocumentWhereForUser(user);
+  const maintenanceWhere = getMaintenanceWhereForUser(user);
+  const vendorWhere = getVendorWhereForUser(user);
+  const maintenanceOpenWhere = {
+    AND: [
+      ...(maintenanceWhere ? [maintenanceWhere] : []),
+      {
+        status: {
+          in: ["OPEN", "IN_PROGRESS"],
+        },
+      },
+    ],
+  };
+
   const [
     condoCount,
     buildingCount,
@@ -25,19 +52,14 @@ export default async function DashboardPage() {
     vendorCount,
     condosRaw,
   ] = await Promise.all([
-    prisma.condo.count(),
-    prisma.building.count(),
-    prisma.unit.count(),
-    prisma.document.count(),
-    prisma.maintenanceTask.count({
-      where: {
-        status: {
-          in: ["OPEN", "IN_PROGRESS"],
-        },
-      },
-    }),
-    prisma.vendor.count(),
+    prisma.condo.count({ where: condoWhere }),
+    prisma.building.count({ where: buildingWhere }),
+    prisma.unit.count({ where: unitWhere }),
+    prisma.document.count({ where: documentWhere }),
+    prisma.maintenanceTask.count({ where: maintenanceOpenWhere }),
+    prisma.vendor.count({ where: vendorWhere }),
     prisma.condo.findMany({
+      where: condoWhere,
       include: {
         buildings: {
           include: {

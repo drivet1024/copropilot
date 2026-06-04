@@ -150,6 +150,64 @@ function getStatus(formData: FormData) {
   return status;
 }
 
+async function getUserScopeData(formData: FormData) {
+  const role = getRole(formData);
+  const condoId = getOptionalString(formData, "condoId");
+  const unitId = getOptionalString(formData, "unitId");
+
+  if (role !== "MASTER_USER" && !condoId) {
+    throw new Error(
+      "La copropriété est obligatoire pour tous les rôles non-master."
+    );
+  }
+
+  if (condoId) {
+    const condo = await prisma.condo.findUnique({
+      where: { id: condoId },
+      select: { id: true },
+    });
+
+    if (!condo) {
+      throw new Error("La copropriété sélectionnée est introuvable.");
+    }
+  }
+
+  if (unitId) {
+    if (!condoId) {
+      throw new Error(
+        "Sélectionnez la copropriété associée avant d’assigner une unité."
+      );
+    }
+
+    const unit = await prisma.unit.findUnique({
+      where: { id: unitId },
+      select: {
+        building: {
+          select: {
+            condoId: true,
+          },
+        },
+      },
+    });
+
+    if (!unit) {
+      throw new Error("L’unité sélectionnée est introuvable.");
+    }
+
+    if (unit.building.condoId !== condoId) {
+      throw new Error(
+        "L’unité sélectionnée doit appartenir à la copropriété de l’utilisateur."
+      );
+    }
+  }
+
+  return {
+    condoId,
+    role,
+    unitId,
+  };
+}
+
 function UserFormFields({
   condos,
   organizations,
@@ -259,13 +317,16 @@ function UserFormFields({
           defaultValue={user?.condoId ?? ""}
           className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-950 outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
         >
-          <option value="">Aucune copropriété</option>
+          <option value="">Aucune copropriété (master seulement)</option>
           {condos.map((condo: UserFormCondo) => (
             <option key={condo.id} value={condo.id}>
               {condo.name}
             </option>
           ))}
         </select>
+        <span className="block text-xs font-medium text-slate-500">
+          Obligatoire pour tous les rôles non-master.
+        </span>
       </label>
 
       <label className="space-y-2 md:col-span-2">
@@ -293,7 +354,7 @@ async function createUser(formData: FormData) {
   const actor = await requireRole(["MASTER_USER"]);
   const email = getFormValue(formData, "email").toLowerCase();
   const password = getFormValue(formData, "password");
-  const role = getRole(formData);
+  const scopeData = await getUserScopeData(formData);
 
   if (!email || !password) {
     throw new Error("L’email et le mot de passe temporaire sont obligatoires.");
@@ -301,14 +362,14 @@ async function createUser(formData: FormData) {
 
   const createdUser = await prisma.user.create({
     data: {
-      condoId: getOptionalString(formData, "condoId"),
+      condoId: scopeData.condoId,
       email,
       name: getOptionalString(formData, "name"),
       organizationId: getOptionalString(formData, "organizationId"),
       passwordHash: await hashPassword(password),
-      role,
+      role: scopeData.role,
       status: getStatus(formData),
-      unitId: getOptionalString(formData, "unitId"),
+      unitId: scopeData.unitId,
     },
     select: {
       id: true,
@@ -333,19 +394,20 @@ async function updateUser(formData: FormData) {
   const id = getFormValue(formData, "id");
   const email = getFormValue(formData, "email").toLowerCase();
   const password = getFormValue(formData, "password");
+  const scopeData = await getUserScopeData(formData);
 
   if (!id || !email) {
     throw new Error("L’utilisateur et l’email sont obligatoires.");
   }
 
   const data: UserUpdateData = {
-    condoId: getOptionalString(formData, "condoId"),
+    condoId: scopeData.condoId,
     email,
     name: getOptionalString(formData, "name"),
     organizationId: getOptionalString(formData, "organizationId"),
-    role: getRole(formData),
+    role: scopeData.role,
     status: getStatus(formData),
-    unitId: getOptionalString(formData, "unitId"),
+    unitId: scopeData.unitId,
   };
 
   if (password) {
