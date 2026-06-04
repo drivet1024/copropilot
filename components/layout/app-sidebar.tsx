@@ -2,49 +2,30 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Bot,
-  Building,
-  Building2,
-  CalendarCheck,
-  FileText,
-  Handshake,
-  Home,
-  Landmark,
-  LayoutDashboard,
-  MessageSquare,
-  Settings,
-  Users,
-} from "lucide-react";
+import { Building2 } from "lucide-react";
 
-import type { SessionUser } from "@/lib/auth/session";
+import {
+  getNavigationForRole,
+  type NavigationContext,
+  type UserRole,
+} from "@/lib/permissions/navigation";
 import { cn } from "@/lib/utils";
 
-const navigationItems = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Copropriétés", href: "/condos", icon: Home },
-  { label: "Immeubles", href: "/buildings", icon: Building2 },
-  { label: "Unités", href: "/units", icon: Building },
-  { label: "Rappels assurance", href: "/insurance-reminders", icon: CalendarCheck },
-  { label: "Templates SMS", href: "/sms-templates", icon: MessageSquare },
-  { label: "Documents", href: "/documents", icon: FileText },
-  { label: "Entretien", href: "/maintenance", icon: CalendarCheck },
-  { label: "Fonds de prévoyance", href: "/reserve-fund", icon: Landmark },
-  { label: "Fournisseurs", href: "/vendors", icon: Handshake },
-  { label: "Assistant IA", href: "/ai-assistant", icon: Bot },
-];
+type SidebarUser = {
+  role: UserRole;
+};
 
-const adminNavigationItems = [
-  { label: "Utilisateurs", href: "/users", icon: Users },
-  { label: "Paramètres", href: "/settings", icon: Settings },
-];
+type AppSidebarProps = {
+  user: SidebarUser;
+  currentCondo?: NavigationContext["currentCondo"];
+};
 
-export function AppSidebar({ user }: { user: SessionUser }) {
+export function AppSidebar({ user, currentCondo }: AppSidebarProps) {
   const pathname = usePathname();
-  const visibleNavigationItems =
-    user.role === "MASTER_USER"
-      ? [...navigationItems, ...adminNavigationItems]
-      : navigationItems;
+  const visibleNavigationItems = getNavigationForRole(user.role, {
+    currentCondo,
+  });
+  const isOwner = user.role === "OWNER";
 
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 border-r border-slate-200 bg-white px-5 py-7 shadow-[8px_0_30px_rgba(15,23,42,0.04)] lg:flex lg:flex-col">
@@ -67,6 +48,7 @@ export function AppSidebar({ user }: { user: SessionUser }) {
           const Icon = item.icon;
           const active =
             pathname === item.href ||
+            (item.href === "/dashboard" && pathname === "/") ||
             (item.href !== "/dashboard" && pathname.startsWith(`${item.href}/`));
 
           return (
@@ -89,10 +71,12 @@ export function AppSidebar({ user }: { user: SessionUser }) {
 
       <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
         <p className="text-base font-bold text-slate-950">
-          Portefeuille actif
+          {isOwner ? "Portail copropriétaire" : "Portefeuille actif"}
         </p>
         <p className="mt-2 text-sm leading-6 text-slate-500">
-          Données synchronisées avec PostgreSQL.
+          {isOwner
+            ? "Accès à votre copropriété, votre unité et vos documents."
+            : "Modules principaux. Les sous-sections sont dans les pages."}
         </p>
       </div>
     </aside>

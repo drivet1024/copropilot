@@ -1,15 +1,19 @@
-import { Bot, Sparkles, UserRound } from "lucide-react";
+import { Bot, Sparkles, UserRound, type LucideIcon } from "lucide-react";
 
 import { DashboardCard } from "@/components/dashboard/dashboard-card";
 
 type AiAssistantPreviewProps = {
   question: string;
   answer: string;
+  disclaimer?: string;
+  icon?: LucideIcon;
 };
 
 export function AiAssistantPreview({
   question,
   answer,
+  disclaimer,
+  icon: Icon = Sparkles,
 }: AiAssistantPreviewProps) {
   return (
     <DashboardCard
@@ -17,7 +21,7 @@ export function AiAssistantPreview({
       className="h-full bg-gradient-to-br from-white via-sky-50/70 to-teal-50/80"
       action={
         <div className="flex size-9 items-center justify-center rounded-2xl bg-sky-600 text-white">
-          <Sparkles className="size-5" aria-hidden="true" />
+          <Icon className="size-5" aria-hidden="true" />
         </div>
       }
     >
@@ -39,6 +43,12 @@ export function AiAssistantPreview({
             {answer}
           </div>
         </div>
+
+        {disclaimer ? (
+          <p className="rounded-2xl border border-sky-100 bg-white/80 p-3 text-xs font-medium leading-5 text-slate-500">
+            {disclaimer}
+          </p>
+        ) : null}
       </div>
     </DashboardCard>
   );

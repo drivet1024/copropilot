@@ -1,0 +1,1 @@
+ALTER TABLE "Condo" ADD COLUMN "fiscalYearEndDate" TIMESTAMP(3);

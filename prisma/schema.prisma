@@ -25,14 +25,30 @@ enum UserStatus {
   DISABLED
 }
 
+enum PaymentMethod {
+  CHEQUE
+  BANK_TRANSFER
+  PRE_AUTHORIZED
+  CASH
+  OTHER
+}
+
+enum UnitOccupancyStatus {
+  OWNER_OCCUPIED
+  NON_OWNER_OCCUPIED
+  RENTED
+  VACANT
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  condos Condo[]
-  users  User[]
+  condos           Condo[]
+  condoFeePayments CondoFeePayment[]
+  users            User[]
 }
 
 model User {
@@ -53,23 +69,26 @@ model User {
   condo        Condo?        @relation(fields: [condoId], references: [id])
   unit         Unit?         @relation(fields: [unitId], references: [id])
 
-  auditLogs AuditLog[]
+  auditLogs               AuditLog[]
+  createdCondoFeePayments CondoFeePayment[] @relation("CreatedCondoFeePayments")
 }
 
 model Condo {
-  id             String   @id @default(cuid())
-  name           String
-  address        String?
-  organizationId String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                String    @id @default(cuid())
+  name              String
+  address           String?
+  fiscalYearEndDate DateTime?
+  organizationId    String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  organization Organization      @relation(fields: [organizationId], references: [id])
-  buildings    Building[]
-  documents    Document[]
-  maintenance  MaintenanceTask[]
-  users        User[]
-  vendors      Vendor[]
+  organization     Organization      @relation(fields: [organizationId], references: [id])
+  buildings        Building[]
+  documents        Document[]
+  maintenance      MaintenanceTask[]
+  users            User[]
+  vendors          Vendor[]
+  condoFeePayments CondoFeePayment[]
 }
 
 model Building {
@@ -103,10 +122,21 @@ model Unit {
   insuranceRenewalDate DateTime?
   waterHeaterDate      DateTime?
   hasAirConditioning   Boolean   @default(false)
+  monthlyCondoFee      Decimal?  @db.Decimal(10, 2)
+  sharePercentage      Decimal?  @db.Decimal(6, 3)
+  parkingSpace         String?
+  storageLocker        String?
+  status               UnitOccupancyStatus?
+  notes                String?
+  deletedAt            DateTime?
 
   building              Building               @relation(fields: [buildingId], references: [id])
+  condoFeePayments      CondoFeePayment[]
   insuranceReminderLogs InsuranceReminderLog[]
   users                 User[]
+
+  @@index([buildingId])
+  @@index([number])
 }
 
 model AuditLog {
@@ -197,4 +227,30 @@ model Vendor {
   updatedAt DateTime @updatedAt
 
   condo Condo @relation(fields: [condoId], references: [id])
+}
+
+model CondoFeePayment {
+  id                 String        @id @default(cuid())
+  tenantId           String
+  condoCorporationId String
+  unitId             String
+  amount             Decimal       @db.Decimal(10, 2)
+  paymentDate        DateTime
+  paymentMethod      PaymentMethod
+  chequeNumber       String?
+  notes              String?
+  createdById        String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  tenant           Organization @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  condoCorporation Condo        @relation(fields: [condoCorporationId], references: [id], onDelete: Cascade)
+  unit             Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  createdBy        User?        @relation("CreatedCondoFeePayments", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([condoCorporationId])
+  @@index([unitId])
+  @@index([paymentDate])
+  @@index([paymentMethod])
 }
