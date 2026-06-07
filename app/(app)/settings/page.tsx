@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { ResetDatabaseCard } from "@/components/settings/reset-database-card";
+import { SettingsImportDataSection } from "@/components/settings/settings-import-data-section";
 import { requireRole } from "@/lib/auth/session";
 
 export default async function SettingsPage() {
@@ -20,7 +21,7 @@ export default async function SettingsPage() {
         </p>
       </section>
 
-      <ResetDatabaseCard />
+      <SettingsImportDataSection />
 
       <section className="grid gap-4 lg:grid-cols-2">
         <Link
@@ -36,6 +37,8 @@ export default async function SettingsPage() {
           </p>
         </Link>
       </section>
+
+      <ResetDatabaseCard />
     </div>
   );
 }

@@ -155,6 +155,38 @@ export function getMaintenanceWhereForUser(
   return { condoId: scope.condoId };
 }
 
+export function getMaintenanceItemWhereForUser(
+  user: Pick<SessionUser, "role" | "condoId">
+): Prisma.MaintenanceItemWhereInput | undefined {
+  const scope = getUserCondoScope(user);
+
+  if (scope.type === "all") {
+    return undefined;
+  }
+
+  if (scope.type === "none") {
+    return { condoId: { in: [] } };
+  }
+
+  return { condoId: scope.condoId };
+}
+
+export function getMaintenanceOccurrenceWhereForUser(
+  user: Pick<SessionUser, "role" | "condoId">
+): Prisma.MaintenanceOccurrenceWhereInput | undefined {
+  const scope = getUserCondoScope(user);
+
+  if (scope.type === "all") {
+    return undefined;
+  }
+
+  if (scope.type === "none") {
+    return { condoId: { in: [] } };
+  }
+
+  return { condoId: scope.condoId };
+}
+
 export function getVendorWhereForUser(
   user: Pick<SessionUser, "role" | "condoId">
 ): Prisma.VendorWhereInput | undefined {
@@ -278,6 +310,25 @@ export async function assertMaintenanceAccess(
   assertCondoAccess(user, maintenance.condoId);
 
   return maintenance;
+}
+
+export async function assertMaintenanceOccurrenceAccess(
+  user: Pick<SessionUser, "role" | "condoId">,
+  occurrenceId: string
+) {
+  const { prisma } = await import("../db/prisma");
+  const occurrence = await prisma.maintenanceOccurrence.findUnique({
+    where: { id: occurrenceId },
+    select: { condoId: true },
+  });
+
+  if (!occurrence) {
+    throw new TenantAccessError("Occurrence d’entretien introuvable.");
+  }
+
+  assertCondoAccess(user, occurrence.condoId);
+
+  return occurrence;
 }
 
 export async function assertVendorAccess(

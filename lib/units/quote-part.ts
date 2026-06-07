@@ -1,6 +1,7 @@
 type QuotePartCalculationInput = {
   parkingCount?: unknown;
   parkingShareValue?: unknown;
+  quotePartOther?: unknown;
   sharePercentage?: unknown;
 };
 
@@ -8,6 +9,7 @@ type QuotePartCalculationResult = {
   parkingCount: number;
   parkingShareValue: number;
   parkingQuotePart: number;
+  otherQuotePart: number;
   totalQuotePart: number;
   unitQuotePart: number;
 };
@@ -37,12 +39,14 @@ export function calculateUnitQuotePartTotal(
   input: QuotePartCalculationInput
 ): QuotePartCalculationResult {
   const unitQuotePart = toNonNegativeNumber(input.sharePercentage);
+  const otherQuotePart = toNonNegativeNumber(input.quotePartOther);
   const parkingCount = toNonNegativeInteger(input.parkingCount);
   const parkingShareValue = toNonNegativeNumber(input.parkingShareValue);
   const parkingQuotePart = parkingCount * parkingShareValue;
-  const totalQuotePart = unitQuotePart + parkingQuotePart;
+  const totalQuotePart = unitQuotePart + parkingQuotePart + otherQuotePart;
 
   return {
+    otherQuotePart,
     parkingCount,
     parkingShareValue,
     parkingQuotePart,

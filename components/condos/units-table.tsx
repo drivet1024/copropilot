@@ -20,21 +20,12 @@ type UnitsTableProps = {
 
 const statusOptions: UnitStatusFilter[] = [
   "Tous",
-  "Occupant",
+  "Propriétaire occupant",
   "Non occupant",
   "Loué",
   "Vacant",
   "Non défini",
 ];
-
-const currencyFormatter = new Intl.NumberFormat("fr-CA", {
-  currency: "CAD",
-  style: "currency",
-});
-
-function formatCurrency(value: number | null) {
-  return value == null ? "Non défini" : currencyFormatter.format(value);
-}
 
 function createAddUnitButton() {
   return (
@@ -79,10 +70,9 @@ export function UnitsTable({
     "Unité",
     ...(showBuildingColumn ? ["Bâtiment"] : []),
     "Propriétaire",
-    "Stationnements",
     "Quote-part totale",
     "Frais mensuels",
-    "Statut",
+    "Statut de location",
     "Actions",
   ];
 
@@ -149,7 +139,7 @@ export function UnitsTable({
 
             <label className="space-y-2">
               <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                Statut
+                Statut de location
               </span>
               <select
                 value={status}
@@ -166,7 +156,7 @@ export function UnitsTable({
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1050px] text-left text-sm">
+            <table className="w-full min-w-[920px] text-left text-sm">
               <thead className="bg-white">
                 <tr className="border-b border-slate-200">
                   {headers.map((header) => (
@@ -208,13 +198,10 @@ export function UnitsTable({
                         {unit.ownerName || "Non défini"}
                       </td>
                       <td className="px-4 py-4 font-semibold text-slate-700">
-                        {unit.parkingCountDisplay}
-                      </td>
-                      <td className="px-4 py-4 font-semibold text-slate-700">
                         {unit.totalQuotePartDisplay}
                       </td>
                       <td className="px-4 py-4 font-semibold text-slate-700">
-                        {formatCurrency(unit.monthlyCondoFeeAmount)}
+                        {unit.monthlyCondoFeeDisplay}
                       </td>
                       <td className="px-4 py-4">
                         <span className="inline-flex rounded-full bg-sky-50 px-3 py-1 text-sm font-bold text-sky-700">

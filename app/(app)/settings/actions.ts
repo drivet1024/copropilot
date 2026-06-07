@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth/session";
 import type { SessionUser } from "@/lib/auth/session";
 import { getCurrentCondoForManager } from "@/lib/data/condos";
 import type { CurrentCondo } from "@/lib/data/condos";
+import { assertMaintenanceOccurrenceAccess } from "@/lib/auth/tenant-access";
 import {
   analyzeUnitImportWorkbook,
   confirmUnitImportPayload,
@@ -15,6 +16,15 @@ import {
   type UnitImportPreviewRow,
   type UnitImportSummary,
 } from "@/lib/data/unit-import";
+import {
+  analyzeMaintenanceImportWorkbook,
+  confirmMaintenanceImportPayload,
+} from "@/lib/data/maintenance-import.service";
+import type {
+  MaintenanceImportPayload,
+  MaintenanceImportPreviewRow,
+  MaintenanceImportSummary,
+} from "@/lib/data/maintenance-import.types";
 
 export type ResetDatabaseResult = {
   ok: boolean;
@@ -27,6 +37,19 @@ export type ImportUnitsResult = {
   message: string;
   previewRows?: UnitImportPreviewRow[];
   summary?: UnitImportSummary;
+};
+
+export type ImportMaintenanceResult = {
+  importPayload?: MaintenanceImportPayload;
+  ok: boolean;
+  message: string;
+  previewRows?: MaintenanceImportPreviewRow[];
+  summary?: MaintenanceImportSummary;
+};
+
+export type MaintenanceOccurrenceActionResult = {
+  ok: boolean;
+  message: string;
 };
 
 type ExcelImportContext =
@@ -43,6 +66,15 @@ type ImportCondoContext =
   | { error: ImportUnitsResult }
   | {
       condo: CurrentCondo;
+      user: SessionUser;
+    };
+
+type MaintenanceExcelImportContext =
+  | { error: ImportMaintenanceResult }
+  | {
+      buffer: Buffer;
+      condo: CurrentCondo;
+      fileName: string;
       user: SessionUser;
     };
 
@@ -86,6 +118,56 @@ async function getImportCondoContext(): Promise<ImportCondoContext> {
   }
 
   return { condo, user };
+}
+
+async function getMaintenanceExcelImportContext(
+  formData: FormData
+): Promise<MaintenanceExcelImportContext> {
+  const context = await getImportCondoContext();
+
+  if ("error" in context) {
+    return {
+      error: {
+        ok: false,
+        message: context.error.message.replace("des unités", "du carnet d’entretien"),
+      },
+    };
+  }
+
+  const file = formData.get("file");
+  const hasFile = file instanceof File;
+
+  console.log("[analyzeMaintenanceImportExcel] Fichier reçu", {
+    fileName: hasFile ? file.name : null,
+    hasFile,
+    size: hasFile ? file.size : 0,
+    type: hasFile ? file.type : null,
+  });
+
+  if (!hasFile || file.size === 0) {
+    return {
+      error: {
+        ok: false,
+        message: "Veuillez sélectionner un fichier Excel.",
+      },
+    };
+  }
+
+  if (!file.name.toLowerCase().endsWith(".xlsx")) {
+    return {
+      error: {
+        ok: false,
+        message: "Le fichier doit être au format .xlsx.",
+      },
+    };
+  }
+
+  return {
+    buffer: Buffer.from(await file.arrayBuffer()),
+    condo: context.condo,
+    fileName: file.name,
+    user: context.user,
+  };
 }
 
 async function getExcelImportContext(
@@ -183,21 +265,25 @@ export async function resetDatabaseData(): Promise<ResetDatabaseResult> {
       prisma.condoBoardMembership.deleteMany(),
       prisma.condoBoard.deleteMany(),
 
-      // 4. Unités
+      // 4. Carnet d'entretien
+      prisma.maintenanceOccurrence.deleteMany(),
+      prisma.maintenanceItem.deleteMany(),
+
+      // 5. Unités
       prisma.unit.deleteMany(),
 
-      // 5. Immeubles
+      // 6. Immeubles
       prisma.building.deleteMany(),
 
-      // 6. Entités liées à la copropriété
+      // 7. Entités liées à la copropriété
       prisma.document.deleteMany(),
       prisma.maintenanceTask.deleteMany(),
       prisma.vendor.deleteMany(),
 
-      // 7. Copropriétés
+      // 8. Copropriétés
       prisma.condo.deleteMany(),
 
-      // 8. Organisation
+      // 9. Organisation
       prisma.organization.deleteMany(),
     ]);
 
@@ -310,6 +396,257 @@ export async function confirmUnitsImport(
     return {
       ok: false,
       message: importErrorMessage(error, "import"),
+    };
+  }
+}
+
+export async function analyzeMaintenanceImportExcel(
+  formData: FormData
+): Promise<ImportMaintenanceResult> {
+  const context = await getMaintenanceExcelImportContext(formData);
+
+  if ("error" in context) {
+    return context.error;
+  }
+
+  try {
+    console.log("[analyzeMaintenanceImportExcel] Analyse demandée", {
+      condoId: context.condo.id,
+      fileName: context.fileName,
+    });
+
+    const analysis = await analyzeMaintenanceImportWorkbook({
+      buffer: context.buffer,
+      condoId: context.condo.id,
+    });
+
+    if (analysis.summary.shortTermTasks + analysis.summary.longTermTasks === 0) {
+      return {
+        ok: false,
+        message: "Aucune tâche d’entretien valide trouvée dans le fichier.",
+        summary: analysis.summary,
+      };
+    }
+
+    return {
+      ok: analysis.summary.errors.length === 0,
+      importPayload: analysis.importPayload,
+      message:
+        analysis.summary.errors.length === 0
+          ? "Analyse terminée. Le carnet d’entretien est prêt à être importé."
+          : "Analyse terminée avec des erreurs à corriger avant import.",
+      previewRows: analysis.previewRows,
+      summary: analysis.summary,
+    };
+  } catch (error) {
+    console.error("[analyzeMaintenanceImportExcel] Échec de l’analyse", error);
+
+    return {
+      ok: false,
+      message: "Une erreur est survenue pendant l’analyse du fichier.",
+    };
+  }
+}
+
+export async function confirmMaintenanceImport(
+  payload: MaintenanceImportPayload
+): Promise<ImportMaintenanceResult> {
+  const context = await getImportCondoContext();
+
+  if ("error" in context) {
+    return {
+      ok: false,
+      message: context.error.message.replace("des unités", "du carnet d’entretien"),
+    };
+  }
+
+  try {
+    const result = await confirmMaintenanceImportPayload({
+      condoId: context.condo.id,
+      payload,
+    });
+
+    revalidatePath("/maintenance");
+    revalidatePath("/settings");
+
+    console.log(
+      `[confirmMaintenanceImport] Carnet importé par ${context.user.email} (${context.user.role})`,
+      result.summary
+    );
+
+    return {
+      ok: true,
+      message: "L’importation du carnet d’entretien est terminée.",
+      previewRows: result.previewRows,
+      summary: result.summary,
+    };
+  } catch (error) {
+    console.error("[confirmMaintenanceImport] Échec de l’importation", error);
+
+    return {
+      ok: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Une erreur est survenue pendant l’importation.",
+    };
+  }
+}
+
+function optionalActionText(value: FormDataEntryValue | null) {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text || null;
+}
+
+function optionalCost(value: FormDataEntryValue | null) {
+  const text = optionalActionText(value);
+
+  if (!text) {
+    return null;
+  }
+
+  const normalized = text.replace(",", ".");
+  const amount = Number(normalized);
+
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw new Error("Le coût est invalide.");
+  }
+
+  return normalized;
+}
+
+function actionOccurrenceId(formData: FormData) {
+  const occurrenceId = optionalActionText(formData.get("occurrenceId"));
+
+  if (!occurrenceId) {
+    throw new Error("Occurrence d’entretien introuvable.");
+  }
+
+  return occurrenceId;
+}
+
+async function ensureCanManageMaintenanceOccurrence(formData: FormData) {
+  const user = await requireUser();
+
+  if (!canManageUnitImports(user.role)) {
+    throw new Error("Vous n’avez pas les droits requis pour modifier une occurrence.");
+  }
+
+  const occurrenceId = actionOccurrenceId(formData);
+  await assertMaintenanceOccurrenceAccess(user, occurrenceId);
+
+  return {
+    occurrenceId,
+    user,
+  };
+}
+
+export async function completeMaintenanceOccurrenceAction(
+  formData: FormData
+): Promise<MaintenanceOccurrenceActionResult> {
+  try {
+    const { occurrenceId, user } = await ensureCanManageMaintenanceOccurrence(formData);
+
+    await prisma.maintenanceOccurrence.update({
+      where: { id: occurrenceId },
+      data: {
+        completedBy: user.name ?? user.email,
+        completedDate: new Date(),
+        cost: optionalCost(formData.get("cost")),
+        note: optionalActionText(formData.get("note")),
+        status: "COMPLETED",
+      },
+    });
+
+    revalidatePath("/maintenance");
+
+    return {
+      ok: true,
+      message: "Occurrence marquée comme complétée.",
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Impossible de compléter l’occurrence.",
+    };
+  }
+}
+
+export async function postponeMaintenanceOccurrenceAction(
+  formData: FormData
+): Promise<MaintenanceOccurrenceActionResult> {
+  try {
+    const { occurrenceId } = await ensureCanManageMaintenanceOccurrence(formData);
+    const plannedDateText = optionalActionText(formData.get("plannedDate"));
+
+    if (!plannedDateText) {
+      throw new Error("La nouvelle date est obligatoire.");
+    }
+
+    const plannedDate = new Date(`${plannedDateText}T00:00:00.000Z`);
+
+    if (Number.isNaN(plannedDate.getTime())) {
+      throw new Error("La nouvelle date est invalide.");
+    }
+
+    await prisma.maintenanceOccurrence.update({
+      where: { id: occurrenceId },
+      data: {
+        note: optionalActionText(formData.get("note")),
+        plannedDate,
+        plannedMonth: plannedDate.getUTCMonth() + 1,
+        plannedYear: plannedDate.getUTCFullYear(),
+        status: "POSTPONED",
+      },
+    });
+
+    revalidatePath("/maintenance");
+
+    return {
+      ok: true,
+      message: "Occurrence reportée.",
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Impossible de reporter l’occurrence.",
+    };
+  }
+}
+
+export async function cancelMaintenanceOccurrenceAction(
+  formData: FormData
+): Promise<MaintenanceOccurrenceActionResult> {
+  try {
+    const { occurrenceId } = await ensureCanManageMaintenanceOccurrence(formData);
+
+    await prisma.maintenanceOccurrence.update({
+      where: { id: occurrenceId },
+      data: {
+        note: optionalActionText(formData.get("note")),
+        status: "CANCELLED",
+      },
+    });
+
+    revalidatePath("/maintenance");
+
+    return {
+      ok: true,
+      message: "Occurrence annulée.",
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Impossible d’annuler l’occurrence.",
     };
   }
 }

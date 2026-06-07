@@ -9,7 +9,11 @@ export type UnitOccupancyStatus =
   | "RENTED"
   | "VACANT";
 
-export type CondoUnitStatus = "Occupant" | "Non occupant" | "Loué" | "Vacant";
+export type CondoUnitStatus =
+  | "Propriétaire occupant"
+  | "Non occupant"
+  | "Loué"
+  | "Vacant";
 
 export type BuildingOption = {
   id: string;
@@ -37,6 +41,8 @@ export type CondoUnitRow = {
   email: string;
   sharePercentage: string;
   sharePercentageDisplay: string;
+  quotePartOther: string;
+  quotePartOtherDisplay: string;
   parkingQuotePart: string;
   parkingQuotePartDisplay: string;
   parkingCount: number;
@@ -49,9 +55,23 @@ export type CondoUnitRow = {
   locker: string;
   monthlyCondoFee: string;
   monthlyCondoFeeAmount: number | null;
+  monthlyCondoFeeDisplay: string;
+  activeAnnualCondoFeeAmount: number | null;
+  activeAnnualCondoFeeDisplay: string;
+  condoFees: UnitCondoFeeRow[];
   occupancyStatus: UnitOccupancyStatus | null;
   status: CondoUnitStatus | "Non défini";
   notes: string;
+};
+
+export type UnitCondoFeeRow = {
+  id: string;
+  annualAmount: string;
+  annualAmountNumber: number;
+  createdAt: string;
+  monthlyAmountNumber: number;
+  updatedAt: string;
+  year: number;
 };
 
 export type UnitMutationInput = {
@@ -70,6 +90,7 @@ export type UnitMutationInput = {
   hasFireplace?: boolean;
   hasAirConditioning?: boolean;
   sharePercentage?: string;
+  quotePartOther?: string;
   parkingCount?: number;
   parkingSpace?: string;
   storageLocker?: string;
@@ -86,8 +107,13 @@ export type CurrentCondoUnits = {
 
 const NOT_DEFINED = "Non défini";
 
+const currencyFormatter = new Intl.NumberFormat("fr-CA", {
+  currency: "CAD",
+  style: "currency",
+});
+
 const occupancyStatusLabels: Record<UnitOccupancyStatus, CondoUnitStatus> = {
-  OWNER_OCCUPIED: "Occupant",
+  OWNER_OCCUPIED: "Propriétaire occupant",
   NON_OWNER_OCCUPIED: "Non occupant",
   RENTED: "Loué",
   VACANT: "Vacant",
@@ -117,30 +143,74 @@ function decimalToString(value: unknown) {
   return value == null ? "" : String(value);
 }
 
-function decimalToNumber(value: unknown) {
-  return value == null ? null : Number(value);
+function formatDecimalPercentInput(value: number) {
+  if (!Number.isFinite(value) || value < 0) {
+    return "";
+  }
+
+  const percentValue = value * 100;
+
+  return Number.isInteger(percentValue)
+    ? String(percentValue)
+    : percentValue.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
 }
 
 function dateToInputValue(value: Date | null) {
   return value ? value.toISOString().slice(0, 10) : "";
 }
 
+function dateTimeToDisplayValue(value: Date) {
+  return new Intl.DateTimeFormat("fr-CA", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(value);
+}
+
 function formatPercentageNumber(value: number, asPercent = false) {
   if (!Number.isFinite(value) || value < 0) {
-    return "0 %";
+    return "0,0000 %";
   }
 
   const normalizedValue = asPercent ? value * 100 : value;
-  const asString =
-    Number.isInteger(normalizedValue)
-      ? String(normalizedValue)
-      : normalizedValue.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
+  const asString = new Intl.NumberFormat("fr-CA", {
+    maximumFractionDigits: 6,
+    minimumFractionDigits: 4,
+  }).format(normalizedValue);
 
-  return `${asString.replace(".", ",")} %`;
+  return `${asString} %`;
 }
 
 function getStatusLabel(status: UnitOccupancyStatus | null) {
   return status ? occupancyStatusLabels[status] : NOT_DEFINED;
+}
+
+function getActiveCondoFeeYear(referenceDate = new Date()) {
+  return referenceDate.getFullYear();
+}
+
+function formatCurrency(value: number | null) {
+  return value == null ? "Budget non défini" : currencyFormatter.format(value);
+}
+
+function getMonthlyCondoFeeDisplay({
+  annualCondoFeeAmount,
+}: {
+  annualCondoFeeAmount: number | null;
+}) {
+  if (annualCondoFeeAmount == null || annualCondoFeeAmount <= 0) {
+    return {
+      amount: null,
+      display: "Budget non défini",
+    };
+  }
+
+  const amount = annualCondoFeeAmount / 12;
+
+  return {
+    amount,
+    display: `${currencyFormatter.format(amount)} / mois`,
+  };
 }
 
 async function getCondoBuildings(condoId: string) {
@@ -217,7 +287,8 @@ export async function getBuildingsForCondo(
 
 export async function getUnitsForCondo(
   condoId: string,
-  parkingShareValue = 0
+  parkingShareValue = 0,
+  activeCondoFeeYear = getActiveCondoFeeYear()
 ): Promise<CondoUnitRow[]> {
   const units = await prisma.unit.findMany({
     where: {
@@ -243,10 +314,23 @@ export async function getUnitsForCondo(
       hasFireplace: true,
       hasAirConditioning: true,
       sharePercentage: true,
+      quotePartOther: true,
       parkingCount: true,
       parkingSpace: true,
       storageLocker: true,
       monthlyCondoFee: true,
+      condoFees: {
+        orderBy: {
+          year: "desc",
+        },
+        select: {
+          annualAmount: true,
+          createdAt: true,
+          id: true,
+          updatedAt: true,
+          year: true,
+        },
+      },
       status: true,
       notes: true,
       building: {
@@ -259,10 +343,19 @@ export async function getUnitsForCondo(
   });
 
   return units.map((unit) => {
+    const activeCondoFee = unit.condoFees.find(
+      (fee) => fee.year === activeCondoFeeYear
+    );
+    const annualCondoFeeAmount =
+      activeCondoFee == null ? null : Number(activeCondoFee.annualAmount);
     const quotePart = calculateUnitQuotePartTotal({
       parkingCount: unit.parkingCount,
       parkingShareValue,
+      quotePartOther: unit.quotePartOther,
       sharePercentage: unit.sharePercentage,
+    });
+    const monthlyCondoFee = getMonthlyCondoFeeDisplay({
+      annualCondoFeeAmount,
     });
 
     return {
@@ -284,10 +377,12 @@ export async function getUnitsForCondo(
       hasAirConditioning: unit.hasAirConditioning,
       phone: unit.phone ?? NOT_DEFINED,
       email: unit.email ?? NOT_DEFINED,
-      sharePercentage: decimalToString(unit.sharePercentage),
-      sharePercentageDisplay: formatPercentageNumber(quotePart.unitQuotePart),
+      sharePercentage: formatDecimalPercentInput(quotePart.unitQuotePart),
+      sharePercentageDisplay: formatPercentageNumber(quotePart.unitQuotePart, true),
+      quotePartOther: formatDecimalPercentInput(quotePart.otherQuotePart),
+      quotePartOtherDisplay: formatPercentageNumber(quotePart.otherQuotePart, true),
       parkingQuotePart: String(quotePart.parkingQuotePart),
-      parkingQuotePartDisplay: formatPercentageNumber(quotePart.parkingQuotePart),
+      parkingQuotePartDisplay: formatPercentageNumber(quotePart.parkingQuotePart, true),
       parkingCount: quotePart.parkingCount,
       parkingCountDisplay: String(quotePart.parkingCount),
       totalQuotePart: String(quotePart.totalQuotePart),
@@ -297,7 +392,23 @@ export async function getUnitsForCondo(
       parking: unit.parkingSpace ?? NOT_DEFINED,
       locker: unit.storageLocker ?? NOT_DEFINED,
       monthlyCondoFee: decimalToString(unit.monthlyCondoFee),
-      monthlyCondoFeeAmount: decimalToNumber(unit.monthlyCondoFee),
+      monthlyCondoFeeAmount: monthlyCondoFee.amount,
+      monthlyCondoFeeDisplay: monthlyCondoFee.display,
+      activeAnnualCondoFeeAmount: annualCondoFeeAmount,
+      activeAnnualCondoFeeDisplay: formatCurrency(annualCondoFeeAmount),
+      condoFees: unit.condoFees.map((fee) => {
+        const annualAmountNumber = Number(fee.annualAmount);
+
+        return {
+          id: fee.id,
+          annualAmount: decimalToString(fee.annualAmount),
+          annualAmountNumber,
+          createdAt: dateTimeToDisplayValue(fee.createdAt),
+          monthlyAmountNumber: annualAmountNumber / 12,
+          updatedAt: dateTimeToDisplayValue(fee.updatedAt),
+          year: fee.year,
+        };
+      }),
       occupancyStatus: unit.status,
       status: getStatusLabel(unit.status),
       notes: unit.notes ?? "",
@@ -315,10 +426,13 @@ export async function getUnitsForCurrentCondo(
     return null;
   }
 
-  const [buildings, units] = await Promise.all([
-    getBuildingsForCondo(condo.id),
-    getUnitsForCondo(condo.id, condo.parkingShareValue),
-  ]);
+  const activeCondoFeeYear = getActiveCondoFeeYear();
+  const buildings = await getBuildingsForCondo(condo.id);
+  const units = await getUnitsForCondo(
+    condo.id,
+    condo.parkingShareValue,
+    activeCondoFeeYear
+  );
 
   return { condo, buildings, units };
 }
@@ -327,6 +441,40 @@ export async function getUnitById(unitId: string, condoId: string) {
   const units = await getUnitsForCondo(condoId);
 
   return units.find((unit) => unit.id === unitId) ?? null;
+}
+
+export async function getUnitCondoFees(unitId: string, condoId: string) {
+  await assertUnitBelongsToCondo(unitId, condoId);
+
+  const fees = await prisma.unitCondoFee.findMany({
+    where: {
+      unitId,
+    },
+    orderBy: {
+      year: "desc",
+    },
+    select: {
+      annualAmount: true,
+      createdAt: true,
+      id: true,
+      updatedAt: true,
+      year: true,
+    },
+  });
+
+  return fees.map((fee) => {
+    const annualAmountNumber = Number(fee.annualAmount);
+
+    return {
+      id: fee.id,
+      annualAmount: decimalToString(fee.annualAmount),
+      annualAmountNumber,
+      createdAt: dateTimeToDisplayValue(fee.createdAt),
+      monthlyAmountNumber: annualAmountNumber / 12,
+      updatedAt: dateTimeToDisplayValue(fee.updatedAt),
+      year: fee.year,
+    };
+  });
 }
 
 export async function createUnit(condoId: string, input: UnitMutationInput) {
@@ -350,6 +498,7 @@ export async function createUnit(condoId: string, input: UnitMutationInput) {
       parkingSpace: optionalValue(input.parkingSpace),
       phone: optionalValue(input.ownerPhone),
       roomCount: optionalValue(input.roomCount),
+      quotePartOther: optionalValue(input.quotePartOther) ?? "0",
       sharePercentage: optionalValue(input.sharePercentage),
       squareFeet: input.squareFeet ?? null,
       status: input.occupancyStatus ?? null,
@@ -386,6 +535,7 @@ export async function updateUnit(
       parkingSpace: optionalValue(input.parkingSpace),
       phone: optionalValue(input.ownerPhone),
       roomCount: optionalValue(input.roomCount),
+      quotePartOther: optionalValue(input.quotePartOther) ?? "0",
       sharePercentage: optionalValue(input.sharePercentage),
       squareFeet: input.squareFeet ?? null,
       status: input.occupancyStatus ?? null,
@@ -406,6 +556,54 @@ export async function deleteUnit(unitId: string, condoId: string) {
   });
 }
 
+export async function createUnitCondoFee(
+  unitId: string,
+  condoId: string,
+  input: { annualAmount: string; year: number }
+) {
+  await assertUnitBelongsToCondo(unitId, condoId);
+
+  return prisma.unitCondoFee.upsert({
+    where: {
+      unitId_year: {
+        unitId,
+        year: input.year,
+      },
+    },
+    create: {
+      annualAmount: input.annualAmount,
+      unitId,
+      year: input.year,
+    },
+    update: {
+      annualAmount: input.annualAmount,
+    },
+  });
+}
+
+export async function updateUnitCondoFee(
+  feeId: string,
+  condoId: string,
+  input: { annualAmount: string }
+) {
+  await assertUnitCondoFeeBelongsToCondo(feeId, condoId);
+
+  return prisma.unitCondoFee.update({
+    where: { id: feeId },
+    data: {
+      annualAmount: input.annualAmount,
+    },
+  });
+}
+
+export async function deleteUnitCondoFee(feeId: string, condoId: string) {
+  await assertUnitCondoFeeBelongsToCondo(feeId, condoId);
+
+  return prisma.unitCondoFee.delete({
+    where: { id: feeId },
+  });
+}
+
 async function assertUnitBelongsToCondo(unitId: string, condoId: string) {
   const unit = await prisma.unit.findFirst({
     where: {
@@ -422,5 +620,26 @@ async function assertUnitBelongsToCondo(unitId: string, condoId: string) {
 
   if (!unit) {
     throw new Error("Cette unité est introuvable pour la copropriété sélectionnée.");
+  }
+}
+
+async function assertUnitCondoFeeBelongsToCondo(feeId: string, condoId: string) {
+  const fee = await prisma.unitCondoFee.findFirst({
+    where: {
+      id: feeId,
+      unit: {
+        deletedAt: null,
+        building: {
+          condoId,
+        },
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!fee) {
+    throw new Error("Ces frais de condo sont introuvables pour la copropriété sélectionnée.");
   }
 }

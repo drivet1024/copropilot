@@ -12,6 +12,7 @@ import type {
 } from "./payment-types";
 
 type UnitPaymentProfile = {
+  annualFee: number;
   unitId: string;
   unitNumber: string;
   ownerName: string;
@@ -181,7 +182,7 @@ export function createUnitCondoFeeSummary({
     )
   ).size;
   const fiscalYearExpectedCount = fiscalMonths.length;
-  const fiscalYearTotalExpected = unit.monthlyFee * fiscalYearExpectedCount;
+  const fiscalYearTotalExpected = unit.annualFee;
   const balanceDue = fiscalYearTotalExpected - fiscalYearTotalReceived;
   const lastPayment = [...payments].sort(comparePayments).at(-1);
   const lastCheque = [...payments]

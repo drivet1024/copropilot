@@ -46,6 +46,7 @@ export type CurrentCondoPaymentSummaries = CondoFeePaymentSummaryResult & {
 };
 
 type UnitPaymentProfile = {
+  annualFee: number;
   unitId: string;
   unitNumber: string;
   ownerName: string;
@@ -103,7 +104,12 @@ async function getCondoTenantId(condoId: string) {
   return condo.organizationId;
 }
 
+function getActiveCondoFeeYear(referenceDate = new Date()) {
+  return referenceDate.getFullYear();
+}
+
 async function getPaymentUnitForCondo(unitId: string, condoId: string) {
+  const activeCondoFeeYear = getActiveCondoFeeYear();
   const unit = await prisma.unit.findFirst({
     where: {
       deletedAt: null,
@@ -113,8 +119,16 @@ async function getPaymentUnitForCondo(unitId: string, condoId: string) {
       },
     },
     select: {
+      condoFees: {
+        where: {
+          year: activeCondoFeeYear,
+        },
+        select: {
+          annualAmount: true,
+        },
+        take: 1,
+      },
       id: true,
-      monthlyCondoFee: true,
     },
   });
 
@@ -122,9 +136,11 @@ async function getPaymentUnitForCondo(unitId: string, condoId: string) {
     throw new Error("L’unité sélectionnée n’appartient pas à cette copropriété.");
   }
 
+  const annualFee = decimalToNumber(unit.condoFees[0]?.annualAmount);
+
   return {
     id: unit.id,
-    monthlyFee: decimalToNumber(unit.monthlyCondoFee),
+    monthlyFee: annualFee / 12,
   };
 }
 
@@ -133,7 +149,8 @@ async function assertUnitBelongsToCondo(unitId: string, condoId: string) {
 }
 
 export async function getUnitsAvailableForPayment(
-  condoId: string
+  condoId: string,
+  activeCondoFeeYear = getActiveCondoFeeYear()
 ): Promise<UnitPaymentProfile[]> {
   const units = await prisma.unit.findMany({
     where: {
@@ -144,19 +161,32 @@ export async function getUnitsAvailableForPayment(
     },
     orderBy: [{ building: { name: "asc" } }, { number: "asc" }],
     select: {
+      condoFees: {
+        where: {
+          year: activeCondoFeeYear,
+        },
+        select: {
+          annualAmount: true,
+        },
+        take: 1,
+      },
       id: true,
-      monthlyCondoFee: true,
       number: true,
       ownerName: true,
     },
   });
 
-  return units.map((unit) => ({
-    monthlyFee: decimalToNumber(unit.monthlyCondoFee),
-    ownerName: unit.ownerName ?? "Non défini",
-    unitId: unit.id,
-    unitNumber: unit.number,
-  }));
+  return units.map((unit) => {
+    const annualFee = decimalToNumber(unit.condoFees[0]?.annualAmount);
+
+    return {
+      annualFee,
+      monthlyFee: annualFee / 12,
+      ownerName: unit.ownerName ?? "Non défini",
+      unitId: unit.id,
+      unitNumber: unit.number,
+    };
+  });
 }
 
 export async function getCondoFeePaymentHistoriesForCondo(condoId: string) {
@@ -268,8 +298,9 @@ export async function getCondoFeePaymentSummaries({
   fiscalYearEndDate,
   referenceDate,
 }: GetPaymentSummariesInput): Promise<CondoFeePaymentSummaryResult> {
+  const activeCondoFeeYear = getActiveCondoFeeYear(referenceDate);
   const [units, payments, histories] = await Promise.all([
-    getUnitsAvailableForPayment(condoId),
+    getUnitsAvailableForPayment(condoId, activeCondoFeeYear),
     getCondoFeePaymentsForCondo(condoId),
     getCondoFeePaymentHistoriesForCondo(condoId),
   ]);

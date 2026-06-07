@@ -5,7 +5,6 @@ import { useState, useTransition } from "react";
 
 import { resetDatabaseData } from "@/app/(app)/settings/actions";
 import type { ResetDatabaseResult } from "@/app/(app)/settings/actions";
-import { ImportUnitsDialog } from "@/components/settings/import-units-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -50,18 +49,7 @@ export function ResetDatabaseCard() {
         </div>
 
         <div className="space-y-5 p-5">
-          <div className="space-y-4">
-            <h3 className="text-base font-bold text-slate-800">
-              Importation des unités
-            </h3>
-            <p className="max-w-3xl text-sm leading-6 text-slate-500">
-              Importer les unités, copropriétaires et informations disponibles
-              à partir du fichier Excel officiel de CoproPilot.
-            </p>
-            <ImportUnitsDialog />
-          </div>
-
-          <div className="border-t border-slate-200 pt-5">
+          <div>
             <h3 className="text-base font-bold text-slate-800">
               Réinitialisation des données
             </h3>

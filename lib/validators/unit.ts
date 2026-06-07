@@ -47,6 +47,16 @@ const optionalDecimal = z.preprocess((value) => {
   return normalized.length > 0 ? normalized : undefined;
 }, z.string().regex(/^\d+(\.\d+)?$/, "Entrez un nombre positif.").optional());
 
+const optionalPercentDecimal = z.preprocess((value) => {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalized = value.trim().replace(",", ".");
+
+  return normalized.length > 0 ? normalized : undefined;
+}, z.string().regex(/^\d+(\.\d+)?$/, "Entrez un pourcentage positif.").transform((value) => String(Number(value) / 100)).optional());
+
 const optionalInteger = z.preprocess((value) => {
   if (typeof value !== "string") {
     return undefined;
@@ -104,8 +114,9 @@ export const unitFormSchema = z.object({
   ownerPhone: optionalShortText,
   parkingCount: optionalInteger,
   parkingSpace: optionalShortText,
+  quotePartOther: optionalPercentDecimal,
   roomCount: optionalShortText,
-  sharePercentage: optionalDecimal,
+  sharePercentage: optionalPercentDecimal,
   squareFeet: optionalInteger,
   storageLocker: optionalShortText,
   unitNumber: z
@@ -120,4 +131,35 @@ export type UnitFormInput = z.infer<typeof unitFormSchema>;
 
 export function parseUnitFormData(formData: FormData) {
   return unitFormSchema.safeParse(Object.fromEntries(formData));
+}
+
+const currentYear = new Date().getFullYear();
+
+export const unitCondoFeeFormSchema = z.object({
+  annualAmount: z.preprocess((value) => {
+    if (typeof value !== "string") {
+      return undefined;
+    }
+
+    const normalized = value.trim().replace(",", ".");
+
+    return normalized.length > 0 ? normalized : undefined;
+  }, z.string({ error: "Le montant annuel est obligatoire." }).regex(/^\d+(\.\d{1,2})?$/, "Entrez un montant positif valide.")),
+  feeId: optionalShortText,
+  unitId: z.string().trim().min(1, "L’unité est obligatoire."),
+  year: z.preprocess((value) => {
+    if (typeof value !== "string") {
+      return undefined;
+    }
+
+    const trimmed = value.trim();
+
+    return trimmed.length > 0 ? Number(trimmed) : undefined;
+  }, z.number({ error: "L’année est obligatoire." }).int("L’année doit être un nombre entier.").min(1900, "L’année doit être 1900 ou plus.").max(currentYear + 10, `L’année ne peut pas dépasser ${currentYear + 10}.`)),
+});
+
+export type UnitCondoFeeFormInput = z.infer<typeof unitCondoFeeFormSchema>;
+
+export function parseUnitCondoFeeFormData(formData: FormData) {
+  return unitCondoFeeFormSchema.safeParse(Object.fromEntries(formData));
 }

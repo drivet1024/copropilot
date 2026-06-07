@@ -48,6 +48,15 @@ enum CondoBoardRole {
   DIRECTOR
 }
 
+enum MaintenanceOccurrenceStatus {
+  TODO
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  POSTPONED
+  CANCELLED
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
@@ -79,8 +88,8 @@ model User {
   condo        Condo?        @relation(fields: [condoId], references: [id])
   unit         Unit?         @relation(fields: [unitId], references: [id])
 
-  auditLogs               AuditLog[]
-  createdCondoFeePayments CondoFeePayment[] @relation("CreatedCondoFeePayments")
+  auditLogs                        AuditLog[]
+  createdCondoFeePayments          CondoFeePayment[]        @relation("CreatedCondoFeePayments")
   recordedCondoFeePaymentHistories CondoFeePaymentHistory[] @relation("RecordedCondoFeePaymentHistories")
 }
 
@@ -94,14 +103,16 @@ model Condo {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  organization     Organization      @relation(fields: [organizationId], references: [id])
-  buildings        Building[]
-  condoBoards      CondoBoard[]
-  documents        Document[]
-  maintenance      MaintenanceTask[]
-  users            User[]
-  vendors          Vendor[]
-  condoFeePayments CondoFeePayment[]
+  organization             Organization             @relation(fields: [organizationId], references: [id])
+  buildings                Building[]
+  condoBoards              CondoBoard[]
+  documents                Document[]
+  maintenanceItems         MaintenanceItem[]
+  maintenanceOccurrences   MaintenanceOccurrence[]
+  maintenance              MaintenanceTask[]
+  users                    User[]
+  vendors                  Vendor[]
+  condoFeePayments         CondoFeePayment[]
   condoFeePaymentHistories CondoFeePaymentHistory[]
 }
 
@@ -131,29 +142,46 @@ model Unit {
   mobile               String?
   squareFeet           Int?
   roomCount            String?
-  hasFireplace         Boolean   @default(false)
+  hasFireplace         Boolean              @default(false)
   bathroomCount        Float?
   insuranceRenewalDate DateTime?
   waterHeaterDate      DateTime?
-  hasAirConditioning   Boolean   @default(false)
-  monthlyCondoFee      Decimal?  @db.Decimal(10, 2)
-  sharePercentage      Decimal?  @db.Decimal(10, 6)
-  parkingCount         Int       @default(0)
+  hasAirConditioning   Boolean              @default(false)
+  monthlyCondoFee      Decimal?             @db.Decimal(10, 2)
+  sharePercentage      Decimal?             @db.Decimal(10, 6)
+  quotePartOther       Decimal?             @default(0) @db.Decimal(10, 6)
+  parkingCount         Int                  @default(0)
   parkingSpace         String?
   storageLocker        String?
   status               UnitOccupancyStatus?
   notes                String?
   deletedAt            DateTime?
 
-  building              Building               @relation(fields: [buildingId], references: [id])
-  condoFeePayments      CondoFeePayment[]
+  building                 Building                 @relation(fields: [buildingId], references: [id])
+  condoFeePayments         CondoFeePayment[]
   condoFeePaymentHistories CondoFeePaymentHistory[]
-  insuranceReminderLogs InsuranceReminderLog[]
-  users                 User[]
-  boardMemberships      CondoBoardMembership[]
+  insuranceReminderLogs    InsuranceReminderLog[]
+  users                    User[]
+  boardMemberships         CondoBoardMembership[]
+  condoFees                UnitCondoFee[]
 
   @@index([buildingId])
   @@index([number])
+}
+
+model UnitCondoFee {
+  id           String   @id @default(cuid())
+  unitId       String   @map("unit_id")
+  year         Int
+  annualAmount Decimal  @default(0) @map("annual_amount") @db.Decimal(10, 2)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  unit Unit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@unique([unitId, year])
+  @@index([unitId])
+  @@map("unit_condo_fees")
 }
 
 model AuditLog {
@@ -178,6 +206,8 @@ model Document {
   updatedAt DateTime @updatedAt
 
   condo Condo @relation(fields: [condoId], references: [id])
+
+  maintenanceOccurrenceInvoices MaintenanceOccurrence[] @relation("MaintenanceOccurrenceInvoice")
 }
 
 model SmsTemplate {
@@ -233,6 +263,66 @@ model MaintenanceTask {
   condo Condo @relation(fields: [condoId], references: [id])
 }
 
+model MaintenanceItem {
+  id                String   @id @default(cuid())
+  condoId           String
+  sourceSheet       String
+  sourceRow         Int
+  categoryNumber    String?
+  categoryName      String?
+  elementCode       String
+  componentCode     String?
+  description       String
+  frequencyText     String?
+  monthText         String?
+  performedBy       String?
+  paidBy            String?
+  frequencyType     String?
+  frequencyInterval Int?
+  frequencyUnit     String?
+  maintenanceType   String
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  condo       Condo                   @relation(fields: [condoId], references: [id], onDelete: Cascade)
+  occurrences MaintenanceOccurrence[]
+
+  @@unique([condoId, sourceSheet, elementCode, componentCode, description])
+  @@index([condoId])
+  @@index([maintenanceType])
+  @@map("maintenance_items")
+}
+
+model MaintenanceOccurrence {
+  id                String                      @id @default(cuid())
+  maintenanceItemId String
+  condoId           String
+  plannedYear       Int
+  plannedMonth      Int
+  plannedDate       DateTime
+  status            MaintenanceOccurrenceStatus @default(TODO)
+  completedDate     DateTime?
+  completedBy       String?
+  vendorId          String?
+  cost              Decimal?                    @db.Decimal(10, 2)
+  invoiceDocumentId String?
+  note              String?
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+
+  condo           Condo           @relation(fields: [condoId], references: [id], onDelete: Cascade)
+  maintenanceItem MaintenanceItem @relation(fields: [maintenanceItemId], references: [id], onDelete: Cascade)
+  vendor          Vendor?         @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  invoiceDocument Document?       @relation("MaintenanceOccurrenceInvoice", fields: [invoiceDocumentId], references: [id], onDelete: SetNull)
+
+  @@unique([maintenanceItemId, plannedYear, plannedMonth])
+  @@index([condoId])
+  @@index([plannedDate])
+  @@index([status])
+  @@map("maintenance_occurrences")
+}
+
 model Vendor {
   id        String   @id @default(cuid())
   name      String
@@ -244,6 +334,8 @@ model Vendor {
   updatedAt DateTime @updatedAt
 
   condo Condo @relation(fields: [condoId], references: [id])
+
+  maintenanceOccurrences MaintenanceOccurrence[]
 }
 
 model CondoFeePayment {
@@ -275,17 +367,17 @@ model CondoFeePayment {
 }
 
 model CondoFeePaymentHistory {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   tenantId           String
   condoCorporationId String
   unitId             String
   periodStart        DateTime
-  amount             Decimal  @db.Decimal(10, 2)
-  isPaid             Boolean  @default(false)
+  amount             Decimal   @db.Decimal(10, 2)
+  isPaid             Boolean   @default(false)
   paidAt             DateTime?
   recordedById       String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   tenant           Organization @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   condoCorporation Condo        @relation(fields: [condoCorporationId], references: [id], onDelete: Cascade)
@@ -310,8 +402,8 @@ model CondoBoard {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  tenant           Organization         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  condoCorporation Condo                @relation(fields: [condoCorporationId], references: [id], onDelete: Cascade)
+  tenant           Organization           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  condoCorporation Condo                  @relation(fields: [condoCorporationId], references: [id], onDelete: Cascade)
   members          CondoBoardMembership[]
 
   @@index([tenantId])
@@ -321,22 +413,22 @@ model CondoBoard {
 }
 
 model CondoBoardMembership {
-  id        String         @id @default(cuid())
-  boardId   String
-  tenantId  String
-  unitId    String?
+  id         String         @id @default(cuid())
+  boardId    String
+  tenantId   String
+  unitId     String?
   personName String
-  role      CondoBoardRole
-  startDate DateTime?
-  endDate   DateTime?
-  status    String         @default("ACTIVE")
-  notes     String?
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-  deletedAt DateTime?
+  role       CondoBoardRole
+  startDate  DateTime?
+  endDate    DateTime?
+  status     String         @default("ACTIVE")
+  notes      String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  deletedAt  DateTime?
 
   board CondoBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  unit  Unit?       @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  unit  Unit?      @relation(fields: [unitId], references: [id], onDelete: SetNull)
 
   @@index([boardId])
   @@index([tenantId])

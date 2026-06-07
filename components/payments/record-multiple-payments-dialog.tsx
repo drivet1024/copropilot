@@ -158,9 +158,9 @@ export function RecordMultiplePaymentsDialog({
   readOnly = false,
 }: RecordMultiplePaymentsDialogProps) {
   const router = useRouter();
-  const now = new Date();
-  const today = now.toISOString().slice(0, 10);
-  const allPeriods = useMemo(() => generateReferencePeriods(now), []);
+  const now = useMemo(() => new Date(), []);
+  const today = useMemo(() => now.toISOString().slice(0, 10), [now]);
+  const allPeriods = useMemo(() => generateReferencePeriods(now), [now]);
   const defaultPeriod = useMemo(
     () => getDefaultPeriod(units, now, allPeriods),
     [units, now, allPeriods]
@@ -172,7 +172,7 @@ export function RecordMultiplePaymentsDialog({
   );
   const [search, setSearch] = useState("");
   const [items, setItems] = useState<BatchUnit[]>(() => buildUnitRows(units));
-        const [formState, setFormState] = useState<PaymentFormState>({
+  const [formState, setFormState] = useState<PaymentFormState>({
     fiscalYear: defaultFiscalYear ?? fiscalYearOptions[0] ?? "",
     referencePeriod: defaultPeriod,
     paymentDate: today,
@@ -221,7 +221,7 @@ export function RecordMultiplePaymentsDialog({
     setSearch("");
     setItems(buildUnitRows(units));
     const freshDefaultPeriod = getDefaultPeriod(units, new Date(), allPeriods);
-                setFormState({
+    setFormState({
       fiscalYear: defaultFiscalYear ?? fiscalYearOptions[0] ?? "",
       referencePeriod: freshDefaultPeriod,
       paymentDate: new Date().toISOString().slice(0, 10),
@@ -300,9 +300,9 @@ export function RecordMultiplePaymentsDialog({
       </DialogTrigger>
       <DialogContent
         showCloseButton={false}
-        className="max-h-[92vh] max-w-[calc(100%-2rem)] overflow-hidden rounded-2xl bg-white p-0 shadow-2xl sm:max-w-6xl"
+        className="flex max-h-[92vh] max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden rounded-2xl bg-white p-0 shadow-2xl sm:max-w-6xl"
       >
-        <DialogHeader className="border-b border-slate-200 px-5 py-6 sm:px-6">
+        <DialogHeader className="shrink-0 border-b border-slate-200 px-5 py-6 sm:px-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="text-sm font-bold uppercase tracking-wide text-teal-600">
@@ -327,9 +327,9 @@ export function RecordMultiplePaymentsDialog({
           </div>
         </DialogHeader>
 
-                <form className="flex min-h-0 flex-col" onSubmit={handleSubmit}>
+        <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit}>
           {/* Mois et année de référence */}
-          <div className="border-b border-slate-200 bg-slate-50/50 px-5 py-5">
+          <div className="shrink-0 border-b border-slate-200 bg-slate-50/50 px-5 py-5">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-6">
               <label className="space-y-2 sm:min-w-64">
                 <span className="text-sm font-bold text-slate-700">
@@ -419,8 +419,8 @@ export function RecordMultiplePaymentsDialog({
             </div>
           </div>
 
-          <div className="border-b border-slate-200 px-5 py-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-h-0 flex-1 flex-col border-b border-slate-200 px-5 py-6">
+            <div className="shrink-0 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="text-lg font-bold text-slate-950">
                   Liste des unités
@@ -446,9 +446,9 @@ export function RecordMultiplePaymentsDialog({
               </div>
             </div>
 
-            <div className="mt-6 overflow-x-auto">
+            <div className="mt-6 min-h-0 flex-1 overflow-auto rounded-2xl border border-slate-200">
               <table className="min-w-full table-auto text-left text-sm">
-                <thead className="bg-slate-50">
+                <thead className="sticky top-0 z-10 bg-slate-50">
                   <tr className="border-b border-slate-200">
                     {[
                       "Paiement reçu",
@@ -525,7 +525,7 @@ export function RecordMultiplePaymentsDialog({
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="shrink-0 flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <div className="text-sm text-slate-700">
               <p>
                 <span className="font-semibold">{selectedCount}</span> unité
@@ -539,12 +539,12 @@ export function RecordMultiplePaymentsDialog({
           </div>
 
           {result && !result.ok ? (
-            <div className="border-b border-red-100 bg-red-50 px-5 py-4 text-sm font-semibold text-red-700">
+            <div className="shrink-0 border-b border-red-100 bg-red-50 px-5 py-4 text-sm font-semibold text-red-700">
               {result.message}
             </div>
           ) : null}
 
-          <DialogFooter className="mx-0 mb-0 flex flex-col-reverse gap-3 rounded-b-2xl border-t border-slate-200 bg-white px-5 py-5 sm:flex-row sm:justify-end sm:px-6">
+          <DialogFooter className="mx-0 mb-0 shrink-0 flex flex-col-reverse gap-3 rounded-b-2xl border-t border-slate-200 bg-white px-5 py-5 sm:flex-row sm:justify-end sm:px-6">
             <Button
               type="button"
               variant="outline"

@@ -5,6 +5,7 @@ import type {
 } from "@/lib/payments/payment-types";
 
 type UnitFeeProfile = {
+  annualFee: number;
   unitId: string;
   unitNumber: string;
   ownerName: string;
@@ -16,18 +17,21 @@ const unitFeeProfiles: UnitFeeProfile[] = [
     unitId: "unit_101",
     unitNumber: "101",
     ownerName: "Sophie Martin",
+    annualFee: 5100,
     monthlyFee: 425,
   },
   {
     unitId: "unit_102",
     unitNumber: "102",
     ownerName: "Marc Tremblay",
+    annualFee: 4680,
     monthlyFee: 390,
   },
   {
     unitId: "unit_201",
     unitNumber: "201",
     ownerName: "Nadia Gagnon",
+    annualFee: 6120,
     monthlyFee: 510,
   },
 ];

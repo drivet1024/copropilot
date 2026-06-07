@@ -24,6 +24,7 @@ describe("payment summary helpers", () => {
       fiscalYearEndDate: new Date(2024, 11, 31),
       referenceDate: new Date(2024, 4, 15),
       unit: {
+        annualFee: 1200,
         unitId: "unit_1",
         unitNumber: "101",
         ownerName: "Sophie Martin",
@@ -43,6 +44,7 @@ describe("payment summary helpers", () => {
           id: "payment_2",
           amount: 100,
           paymentDate: "2024-02-01",
+          paymentMonth: "2024-02",
           paymentMethod: "BANK_TRANSFER",
           chequeNumber: null,
         },
@@ -51,6 +53,7 @@ describe("payment summary helpers", () => {
           id: "payment_3",
           amount: 100,
           paymentDate: "2024-03-01",
+          paymentMonth: "2024-03",
           paymentMethod: "CHEQUE",
           chequeNumber: "103",
         },
@@ -59,12 +62,12 @@ describe("payment summary helpers", () => {
 
     expect(summary.fiscalYearExpectedCount).toBe(5);
     expect(summary.fiscalYearPaidCount).toBe(3);
-    expect(summary.fiscalYearTotalExpected).toBe(500);
+    expect(summary.fiscalYearTotalExpected).toBe(1200);
     expect(summary.fiscalYearTotalReceived).toBe(300);
     expect(summary.lastPaymentDate).toBe("2024-03-01");
     expect(summary.lastChequeReceivedDate).toBe("2024-03-01");
     expect(summary.lastChequeNumber).toBe("103");
-    expect(summary.balanceDue).toBe(200);
+    expect(summary.balanceDue).toBe(900);
     expect(summary.currentMonth.periodStart).toBe("2024-05-01");
     expect(summary.currentMonth.isPaid).toBe(false);
     expect(summary.nextPaymentMonth.periodStart).toBe("2024-05-01");
@@ -77,6 +80,7 @@ describe("payment summary helpers", () => {
       fiscalYearEndDate: new Date(2024, 11, 31),
       referenceDate: new Date(2024, 4, 15),
       unit: {
+        annualFee: 1200,
         unitId: "unit_1",
         unitNumber: "101",
         ownerName: "Sophie Martin",
@@ -88,6 +92,7 @@ describe("payment summary helpers", () => {
           id: "payment_5",
           amount: 100,
           paymentDate: "2024-05-01",
+          paymentMonth: "2024-05",
         },
       ],
     });

@@ -205,7 +205,7 @@ export function CondoFeePaymentsTable({
                 "Total reçu année financière",
                 "Solde à recevoir",
                 "Statut",
-                "Actions",
+                      "Actions",
               ].map((header) => (
                 <th
                   key={header}
@@ -268,8 +268,8 @@ export function CondoFeePaymentsTable({
                   <td className="px-4 py-4">
                     <PaymentStatusBadge status={summary.status} />
                   </td>
-                  <td className="whitespace-nowrap px-4 py-4">
-                    <div className="flex flex-wrap items-center gap-1.5">
+                  <td className="w-[320px] whitespace-nowrap px-4 py-4">
+                    <div className="flex flex-nowrap items-center gap-2">
                       <RecordPaymentDialog
                         defaultUnitId={summary.unitId}
                         readOnly={readOnly}
