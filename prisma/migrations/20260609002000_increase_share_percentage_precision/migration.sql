@@ -1,0 +1,2 @@
+ALTER TABLE "Unit"
+ALTER COLUMN "sharePercentage" TYPE DECIMAL(10, 6);

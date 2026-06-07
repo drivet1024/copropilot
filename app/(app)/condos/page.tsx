@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { CondoInformationForm } from "@/components/condos/condo-information-form";
+import { CondoCreationSuccessMessage } from "@/components/condos/condo-creation-success-message";
 import { CondoSectionHeader } from "@/components/condos/condo-section-header";
 import { NoCondoConfiguredState } from "@/components/condos/no-condo-configured-state";
 import { requireUser } from "@/lib/auth/session";
@@ -27,6 +28,7 @@ export default async function CondosPage() {
         activeHref="/condos"
       />
 
+      <CondoCreationSuccessMessage />
       <CondoInformationForm condo={condo} />
     </div>
   );

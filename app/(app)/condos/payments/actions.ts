@@ -7,11 +7,19 @@ import { getCurrentCondoForManager } from "@/lib/data/condos";
 import type { CurrentCondo } from "@/lib/data/condos";
 import {
   createCondoFeePayment,
+  createCondoFeePayments,
   deleteCondoFeePayment,
+  setCondoFeePaymentMonthPaid,
   updateCondoFeePayment,
 } from "@/lib/data/condo-fee-payments";
-import type { CondoFeePaymentMutationInput } from "@/lib/data/condo-fee-payments";
-import { parseCondoFeePaymentFormData } from "@/lib/validators/condo-fee-payment";
+import type {
+  CondoFeePaymentBatchInput,
+  CondoFeePaymentMutationInput,
+} from "@/lib/data/condo-fee-payments";
+import {
+  parseCondoFeePaymentFormData,
+  parseCondoFeeMultiplePaymentInput,
+} from "@/lib/validators/condo-fee-payment";
 
 export type CondoFeePaymentActionResult = {
   ok: boolean;
@@ -76,6 +84,11 @@ function validatePayment(formData: FormData): PaymentValidationContext {
   };
 }
 
+function revalidatePaymentViews() {
+  revalidatePath("/condos/payments");
+  revalidatePath("/condos");
+}
+
 export async function createCondoFeePaymentAction(
   formData: FormData
 ): Promise<CondoFeePaymentActionResult> {
@@ -97,16 +110,61 @@ export async function createCondoFeePaymentAction(
       validation.input,
       context.userId
     );
-    revalidatePath("/condos/payments");
+    revalidatePaymentViews();
 
     return {
       ok: true,
       message: "Le paiement a été enregistré.",
     };
-  } catch {
+  } catch (error) {
     return {
       ok: false,
-      message: "Le paiement n’a pas pu être enregistré.",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Le paiement n’a pas pu être enregistré.",
+    };
+  }
+}
+
+export async function createCondoFeePaymentsAction(
+  payload: CondoFeePaymentBatchInput
+): Promise<CondoFeePaymentActionResult> {
+  const context = await getWritablePaymentContext();
+
+  if ("error" in context) {
+    return context.error;
+  }
+
+  const validation = parseCondoFeeMultiplePaymentInput(payload);
+
+  if (!validation.success) {
+    return {
+      ok: false,
+      message: "Les paiements n’ont pas pu être enregistrés.",
+      fieldErrors: validation.error.flatten().fieldErrors,
+    };
+  }
+
+  try {
+    await createCondoFeePayments(
+      context.condo.id,
+      validation.data,
+      context.userId
+    );
+    revalidatePaymentViews();
+
+    return {
+      ok: true,
+      message: "Les paiements ont été enregistrés.",
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Les paiements n’ont pas pu être enregistrés.",
     };
   }
 }
@@ -133,7 +191,7 @@ export async function updateCondoFeePaymentAction(
       context.condo.id,
       validation.input
     );
-    revalidatePath("/condos/payments");
+    revalidatePaymentViews();
 
     return {
       ok: true,
@@ -161,7 +219,7 @@ export async function deleteCondoFeePaymentAction(
 
   try {
     await deleteCondoFeePayment(paymentId, context.condo.id);
-    revalidatePath("/condos/payments");
+    revalidatePaymentViews();
 
     return {
       ok: true,
@@ -177,3 +235,44 @@ export async function deleteCondoFeePaymentAction(
     };
   }
 }
+
+export async function setCondoFeePaymentMonthPaidAction({
+  isPaid,
+  periodStart,
+  unitId,
+}: {
+  isPaid: boolean;
+  periodStart: string;
+  unitId: string;
+}): Promise<CondoFeePaymentActionResult> {
+  const context = await getWritablePaymentContext();
+
+  if ("error" in context) {
+    return context.error;
+  }
+
+  try {
+    await setCondoFeePaymentMonthPaid({
+      condoId: context.condo.id,
+      isPaid,
+      periodStart,
+      recordedById: context.userId,
+      unitId,
+    });
+    revalidatePaymentViews();
+
+    return {
+      ok: true,
+      message: isPaid ? "Le mois est marqué payé." : "Le mois est marqué impayé.",
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Impossible de modifier ce paiement mensuel.",
+    };
+  }
+}
+

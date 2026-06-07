@@ -4,9 +4,13 @@ import {
   getFiscalYearRange,
   resolveFiscalYearEndDate,
 } from "@/lib/payments/fiscal-year";
-import { buildUnitPaymentSummaries } from "@/lib/payments/payment-summary";
+import {
+  buildUnitPaymentSummaries,
+  getCondoFeePeriodStart,
+} from "@/lib/payments/payment-summary";
 import type {
   CondoFeePayment,
+  CondoFeePaymentHistory,
   PaymentMethod,
   UnitCondoFeeSummary,
 } from "@/lib/payments/payment-types";
@@ -23,6 +27,7 @@ export type CondoFeePaymentMutationInput = {
   chequeNumber?: string;
   notes?: string;
   paymentDate: string;
+  paymentMonth: string;
   paymentMethod: PaymentMethod;
   unitId: string;
 };
@@ -98,7 +103,7 @@ async function getCondoTenantId(condoId: string) {
   return condo.organizationId;
 }
 
-async function assertUnitBelongsToCondo(unitId: string, condoId: string) {
+async function getPaymentUnitForCondo(unitId: string, condoId: string) {
   const unit = await prisma.unit.findFirst({
     where: {
       deletedAt: null,
@@ -109,12 +114,22 @@ async function assertUnitBelongsToCondo(unitId: string, condoId: string) {
     },
     select: {
       id: true,
+      monthlyCondoFee: true,
     },
   });
 
   if (!unit) {
     throw new Error("L’unité sélectionnée n’appartient pas à cette copropriété.");
   }
+
+  return {
+    id: unit.id,
+    monthlyFee: decimalToNumber(unit.monthlyCondoFee),
+  };
+}
+
+async function assertUnitBelongsToCondo(unitId: string, condoId: string) {
+  await getPaymentUnitForCondo(unitId, condoId);
 }
 
 export async function getUnitsAvailableForPayment(
@@ -144,6 +159,44 @@ export async function getUnitsAvailableForPayment(
   }));
 }
 
+export async function getCondoFeePaymentHistoriesForCondo(condoId: string) {
+  const histories = await prisma.condoFeePaymentHistory.findMany({
+    where: {
+      condoCorporationId: condoId,
+    },
+    orderBy: [{ periodStart: "asc" }, { createdAt: "asc" }],
+    select: {
+      amount: true,
+      condoCorporationId: true,
+      createdAt: true,
+      id: true,
+      isPaid: true,
+      paidAt: true,
+      periodStart: true,
+      recordedById: true,
+      tenantId: true,
+      unitId: true,
+      updatedAt: true,
+    },
+  });
+
+  return histories.map(
+    (history): CondoFeePaymentHistory => ({
+      amount: decimalToNumber(history.amount),
+      condoCorporationId: history.condoCorporationId,
+      createdAt: toDateOnly(history.createdAt),
+      id: history.id,
+      isPaid: history.isPaid,
+      paidAt: history.paidAt ? toDateOnly(history.paidAt) : null,
+      periodStart: toDateOnly(history.periodStart),
+      recordedById: history.recordedById,
+      tenantId: history.tenantId,
+      unitId: history.unitId,
+      updatedAt: toDateOnly(history.updatedAt),
+    })
+  );
+}
+
 export async function getCondoFeePaymentsForCondo(condoId: string) {
   const payments = await prisma.condoFeePayment.findMany({
     where: {
@@ -159,10 +212,17 @@ export async function getCondoFeePaymentsForCondo(condoId: string) {
       id: true,
       notes: true,
       paymentDate: true,
+      paymentMonth: true,
+      referenceYear: true,
       paymentMethod: true,
       tenantId: true,
       unitId: true,
       updatedAt: true,
+      unit: {
+        select: {
+          ownerName: true,
+        },
+      },
     },
   });
 
@@ -175,8 +235,10 @@ export async function getCondoFeePaymentsForCondo(condoId: string) {
       createdById: payment.createdById,
       id: payment.id,
       notes: payment.notes,
-      ownerName: "Non défini",
+      ownerName: payment.unit.ownerName ?? "Non défini",
       paymentDate: toDateOnly(payment.paymentDate),
+      paymentMonth: payment.paymentMonth,
+      referenceYear: payment.referenceYear,
       paymentMethod: payment.paymentMethod,
       tenantId: payment.tenantId,
       unitId: payment.unitId,
@@ -206,15 +268,17 @@ export async function getCondoFeePaymentSummaries({
   fiscalYearEndDate,
   referenceDate,
 }: GetPaymentSummariesInput): Promise<CondoFeePaymentSummaryResult> {
-  const [units, payments] = await Promise.all([
+  const [units, payments, histories] = await Promise.all([
     getUnitsAvailableForPayment(condoId),
     getCondoFeePaymentsForCondo(condoId),
+    getCondoFeePaymentHistoriesForCondo(condoId),
   ]);
 
   return {
     paymentCount: payments.length,
     summaries: buildUnitPaymentSummaries({
       condo: { fiscalYearEndDate },
+      histories,
       payments,
       referenceDate,
       units,
@@ -226,7 +290,6 @@ export async function getCondoFeePaymentSummariesForCurrentCondo(
   user?: Pick<SessionUser, "role" | "condoId" | "organizationId"> | null,
   referenceDate = new Date()
 ): Promise<CurrentCondoPaymentSummaries | null> {
-  // TODO: Replace temporary first condo lookup with session-based tenant and condo access control.
   const condo = await getCurrentCondoForManager(user);
 
   if (!condo) {
@@ -258,6 +321,69 @@ export async function getCondoFeePaymentSummariesForCurrentCondo(
   };
 }
 
+export async function setCondoFeePaymentMonthPaid({
+  condoId,
+  isPaid,
+  periodStart,
+  recordedById,
+  unitId,
+}: {
+  condoId: string;
+  isPaid: boolean;
+  periodStart: string;
+  recordedById: string | null;
+  unitId: string;
+}) {
+  const [tenantId, unit] = await Promise.all([
+    getCondoTenantId(condoId),
+    getPaymentUnitForCondo(unitId, condoId),
+  ]);
+  const normalizedPeriodStart = getCondoFeePeriodStart(periodStart);
+  const paidAt = isPaid ? new Date() : null;
+
+  return prisma.condoFeePaymentHistory.upsert({
+    where: {
+      unitId_periodStart: {
+        periodStart: toLocalDate(normalizedPeriodStart),
+        unitId: unit.id,
+      },
+    },
+    create: {
+      amount: unit.monthlyFee,
+      condoCorporationId: condoId,
+      isPaid,
+      paidAt,
+      periodStart: toLocalDate(normalizedPeriodStart),
+      recordedById: isPaid ? recordedById : null,
+      tenantId,
+      unitId: unit.id,
+    },
+    update: {
+      amount: unit.monthlyFee,
+      isPaid,
+      paidAt,
+      recordedById: isPaid ? recordedById : null,
+    },
+  });
+}
+
+export type CondoFeePaymentBatchItemInput = {
+  unitId: string;
+  amount: string;
+  note?: string;
+};
+
+export type CondoFeePaymentBatchInput = {
+  fiscalYear: string;
+  month: string;
+  referenceYear: number;
+  paymentDate: string;
+  paymentMethod: PaymentMethod;
+  chequeNumber?: string;
+  notes?: string;
+  payments: CondoFeePaymentBatchItemInput[];
+};
+
 export async function createCondoFeePayment(
   condoId: string,
   input: CondoFeePaymentMutationInput,
@@ -277,11 +403,58 @@ export async function createCondoFeePayment(
       createdById,
       notes: normalizeOptionalText(input.notes),
       paymentDate: toLocalDate(input.paymentDate),
+      paymentMonth: input.paymentMonth,
       paymentMethod: input.paymentMethod,
       tenantId,
       unitId: input.unitId,
     },
   });
+}
+
+export async function createCondoFeePayments(
+  condoId: string,
+  input: CondoFeePaymentBatchInput,
+  createdById: string | null
+) {
+  if (input.payments.length === 0) {
+    throw new Error("Au moins un paiement doit être sélectionné.");
+  }
+
+  const tenantId = await getCondoTenantId(condoId);
+
+  await Promise.all(
+    input.payments.map(async (payment) => {
+      await assertUnitBelongsToCondo(payment.unitId, condoId);
+    })
+  );
+
+  return prisma.$transaction(
+    input.payments.map((payment) =>
+      prisma.condoFeePayment.create({
+        data: {
+          amount: payment.amount,
+          chequeNumber:
+            input.paymentMethod === "CHEQUE"
+              ? normalizeOptionalText(input.chequeNumber)
+              : null,
+          condoCorporationId: condoId,
+          createdById,
+          notes: [
+            normalizeOptionalText(input.notes),
+            normalizeOptionalText(payment.note),
+          ]
+            .filter(Boolean)
+            .join(" — ") || null,
+          paymentDate: toLocalDate(input.paymentDate),
+          paymentMonth: input.month,
+          referenceYear: input.referenceYear,
+          paymentMethod: input.paymentMethod,
+          tenantId,
+          unitId: payment.unitId,
+        },
+      })
+    )
+  );
 }
 
 export async function updateCondoFeePayment(
@@ -317,6 +490,7 @@ export async function updateCondoFeePayment(
           : null,
       notes: normalizeOptionalText(input.notes),
       paymentDate: toLocalDate(input.paymentDate),
+      paymentMonth: input.paymentMonth,
       paymentMethod: input.paymentMethod,
       unitId: input.unitId,
     },

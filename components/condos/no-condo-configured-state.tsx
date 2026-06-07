@@ -1,5 +1,5 @@
 import { CondoSectionHeader } from "@/components/condos/condo-section-header";
-import { Button } from "@/components/ui/button";
+import { CreateCondoDialog } from "@/components/condos/create-condo-dialog";
 
 type NoCondoConfiguredStateProps = {
   activeHref: string;
@@ -24,12 +24,7 @@ export function NoCondoConfiguredState({
           Ajoutez une copropriété pour activer les informations, les unités et
           les paiements de cette section.
         </p>
-        <Button
-          type="button"
-          className="mt-6 h-11 rounded-xl bg-teal-600 px-5 text-white hover:bg-teal-700"
-        >
-          Créer une copropriété
-        </Button>
+        <CreateCondoDialog />
       </section>
     </div>
   );

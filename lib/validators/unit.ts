@@ -102,6 +102,7 @@ export const unitFormSchema = z.object({
   ownerEmail: optionalEmail,
   ownerName: optionalShortText,
   ownerPhone: optionalShortText,
+  parkingCount: optionalInteger,
   parkingSpace: optionalShortText,
   roomCount: optionalShortText,
   sharePercentage: optionalDecimal,

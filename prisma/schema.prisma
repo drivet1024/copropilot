@@ -40,15 +40,25 @@ enum UnitOccupancyStatus {
   VACANT
 }
 
+enum CondoBoardRole {
+  PRESIDENT
+  VICE_PRESIDENT
+  TREASURER
+  SECRETARY
+  DIRECTOR
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  condos           Condo[]
-  condoFeePayments CondoFeePayment[]
-  users            User[]
+  condos                   Condo[]
+  condoBoards              CondoBoard[]
+  condoFeePayments         CondoFeePayment[]
+  condoFeePaymentHistories CondoFeePaymentHistory[]
+  users                    User[]
 }
 
 model User {
@@ -71,6 +81,7 @@ model User {
 
   auditLogs               AuditLog[]
   createdCondoFeePayments CondoFeePayment[] @relation("CreatedCondoFeePayments")
+  recordedCondoFeePaymentHistories CondoFeePaymentHistory[] @relation("RecordedCondoFeePaymentHistories")
 }
 
 model Condo {
@@ -78,17 +89,20 @@ model Condo {
   name              String
   address           String?
   fiscalYearEndDate DateTime?
+  parkingShareValue Decimal?  @default(0) @db.Decimal(10, 6)
   organizationId    String
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
   organization     Organization      @relation(fields: [organizationId], references: [id])
   buildings        Building[]
+  condoBoards      CondoBoard[]
   documents        Document[]
   maintenance      MaintenanceTask[]
   users            User[]
   vendors          Vendor[]
   condoFeePayments CondoFeePayment[]
+  condoFeePaymentHistories CondoFeePaymentHistory[]
 }
 
 model Building {
@@ -123,7 +137,8 @@ model Unit {
   waterHeaterDate      DateTime?
   hasAirConditioning   Boolean   @default(false)
   monthlyCondoFee      Decimal?  @db.Decimal(10, 2)
-  sharePercentage      Decimal?  @db.Decimal(6, 3)
+  sharePercentage      Decimal?  @db.Decimal(10, 6)
+  parkingCount         Int       @default(0)
   parkingSpace         String?
   storageLocker        String?
   status               UnitOccupancyStatus?
@@ -132,8 +147,10 @@ model Unit {
 
   building              Building               @relation(fields: [buildingId], references: [id])
   condoFeePayments      CondoFeePayment[]
+  condoFeePaymentHistories CondoFeePaymentHistory[]
   insuranceReminderLogs InsuranceReminderLog[]
   users                 User[]
+  boardMemberships      CondoBoardMembership[]
 
   @@index([buildingId])
   @@index([number])
@@ -236,6 +253,8 @@ model CondoFeePayment {
   unitId             String
   amount             Decimal       @db.Decimal(10, 2)
   paymentDate        DateTime
+  paymentMonth       String
+  referenceYear      Int?          @map("reference_year")
   paymentMethod      PaymentMethod
   chequeNumber       String?
   notes              String?
@@ -253,4 +272,75 @@ model CondoFeePayment {
   @@index([unitId])
   @@index([paymentDate])
   @@index([paymentMethod])
+}
+
+model CondoFeePaymentHistory {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  condoCorporationId String
+  unitId             String
+  periodStart        DateTime
+  amount             Decimal  @db.Decimal(10, 2)
+  isPaid             Boolean  @default(false)
+  paidAt             DateTime?
+  recordedById       String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant           Organization @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  condoCorporation Condo        @relation(fields: [condoCorporationId], references: [id], onDelete: Cascade)
+  unit             Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  recordedBy       User?        @relation("RecordedCondoFeePaymentHistories", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@unique([unitId, periodStart])
+  @@index([tenantId])
+  @@index([condoCorporationId])
+  @@index([periodStart])
+  @@index([isPaid])
+}
+
+model CondoBoard {
+  id                 String    @id @default(cuid())
+  tenantId           String
+  condoCorporationId String
+  name               String?
+  startDate          DateTime
+  endDate            DateTime?
+  status             String    @default("ACTIVE")
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  tenant           Organization         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  condoCorporation Condo                @relation(fields: [condoCorporationId], references: [id], onDelete: Cascade)
+  members          CondoBoardMembership[]
+
+  @@index([tenantId])
+  @@index([condoCorporationId])
+  @@index([status])
+  @@index([startDate])
+}
+
+model CondoBoardMembership {
+  id        String         @id @default(cuid())
+  boardId   String
+  tenantId  String
+  unitId    String?
+  personName String
+  role      CondoBoardRole
+  startDate DateTime?
+  endDate   DateTime?
+  status    String         @default("ACTIVE")
+  notes     String?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  deletedAt DateTime?
+
+  board CondoBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  unit  Unit?       @relation(fields: [unitId], references: [id], onDelete: SetNull)
+
+  @@index([boardId])
+  @@index([tenantId])
+  @@index([unitId])
+  @@index([role])
+  @@index([status])
 }

@@ -122,12 +122,6 @@ function PreservedHiddenFields({ unit }: { unit?: CondoUnitRow }) {
       />
       <input
         type="hidden"
-        name="sharePercentage"
-        value={unit?.sharePercentage ?? ""}
-        readOnly
-      />
-      <input
-        type="hidden"
         name="parkingSpace"
         value={unit?.parkingSpace ?? ""}
         readOnly
@@ -382,6 +376,38 @@ export function UnitDialog({
                 className={fieldClassName}
               />
               <FieldError fieldName="bathroomCount" result={result} />
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-sm font-semibold text-slate-700">
+                Quote-part
+              </span>
+              <Input
+                name="sharePercentage"
+                type="number"
+                min="0"
+                step="0.000001"
+                defaultValue={unit?.sharePercentage ?? ""}
+                placeholder="2.100000"
+                className={fieldClassName}
+              />
+              <FieldError fieldName="sharePercentage" result={result} />
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-sm font-semibold text-slate-700">
+                Nombre de stationnements
+              </span>
+              <Input
+                name="parkingCount"
+                type="number"
+                min="0"
+                step="1"
+                defaultValue={String(unit?.parkingCount ?? 0)}
+                placeholder="0"
+                className={fieldClassName}
+              />
+              <FieldError fieldName="parkingCount" result={result} />
             </label>
 
             <label className="space-y-2">

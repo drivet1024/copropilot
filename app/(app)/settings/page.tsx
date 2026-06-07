@@ -1,9 +1,10 @@
 import Link from "next/link";
 
+import { ResetDatabaseCard } from "@/components/settings/reset-database-card";
 import { requireRole } from "@/lib/auth/session";
 
 export default async function SettingsPage() {
-  await requireRole(["MASTER_USER"]);
+  await requireRole(["MASTER_USER", "CONDO_MANAGER"]);
 
   return (
     <div className="space-y-8">
@@ -19,6 +20,8 @@ export default async function SettingsPage() {
         </p>
       </section>
 
+      <ResetDatabaseCard />
+
       <section className="grid gap-4 lg:grid-cols-2">
         <Link
           href="/settings/twilio"
@@ -28,7 +31,7 @@ export default async function SettingsPage() {
             Configuration Twilio
           </p>
           <p className="mt-2 text-base leading-7 text-slate-500">
-            Préparez les identifiants SMS et activez l’envoi lorsque vous serez
+            Préparez les identifiants SMS et activez l&apos;envoi lorsque vous serez
             prêt.
           </p>
         </Link>

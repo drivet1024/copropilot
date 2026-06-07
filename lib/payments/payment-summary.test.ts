@@ -14,10 +14,12 @@ const basePayment = {
   createdById: "user_1",
   createdAt: "2024-01-01",
   updatedAt: "2024-01-01",
+  paymentMonth: "2024-01",
+  referenceYear: 2024,
 } satisfies Omit<CondoFeePayment, "id" | "amount" | "paymentDate">;
 
 describe("payment summary helpers", () => {
-  it("uses all payment methods for fiscal-year totals and cheques only for cheque metadata", () => {
+  it("uses all real payments for fiscal-year totals and cheques only for cheque metadata", () => {
     const summary = createUnitCondoFeeSummary({
       fiscalYearEndDate: new Date(2024, 11, 31),
       referenceDate: new Date(2024, 4, 15),
@@ -55,11 +57,42 @@ describe("payment summary helpers", () => {
       ],
     });
 
+    expect(summary.fiscalYearExpectedCount).toBe(5);
+    expect(summary.fiscalYearPaidCount).toBe(3);
+    expect(summary.fiscalYearTotalExpected).toBe(500);
     expect(summary.fiscalYearTotalReceived).toBe(300);
     expect(summary.lastPaymentDate).toBe("2024-03-01");
     expect(summary.lastChequeReceivedDate).toBe("2024-03-01");
     expect(summary.lastChequeNumber).toBe("103");
     expect(summary.balanceDue).toBe(200);
+    expect(summary.currentMonth.periodStart).toBe("2024-05-01");
+    expect(summary.currentMonth.isPaid).toBe(false);
+    expect(summary.nextPaymentMonth.periodStart).toBe("2024-05-01");
+    expect(summary.historyMonths).toHaveLength(12);
     expect(summary.status).toBe("PARTIAL");
+  });
+
+  it("marks the next payment as the following month when the current month has a real payment", () => {
+    const summary = createUnitCondoFeeSummary({
+      fiscalYearEndDate: new Date(2024, 11, 31),
+      referenceDate: new Date(2024, 4, 15),
+      unit: {
+        unitId: "unit_1",
+        unitNumber: "101",
+        ownerName: "Sophie Martin",
+        monthlyFee: 100,
+      },
+      payments: [
+        {
+          ...basePayment,
+          id: "payment_5",
+          amount: 100,
+          paymentDate: "2024-05-01",
+        },
+      ],
+    });
+
+    expect(summary.currentMonth.isPaid).toBe(true);
+    expect(summary.nextPaymentMonth.periodStart).toBe("2024-06-01");
   });
 });

@@ -28,11 +28,11 @@ import type {
 } from "@/lib/payments/payment-types";
 
 const paymentMethodLabels: Record<PaymentMethod, string> = {
-  CHEQUE: "Chèque",
   BANK_TRANSFER: "Virement bancaire",
-  PRE_AUTHORIZED: "Paiement préautorisé",
   CASH: "Comptant",
+  CHEQUE: "Chèque",
   OTHER: "Autre",
+  PRE_AUTHORIZED: "Paiement préautorisé",
 };
 
 const paymentMethods = Object.entries(paymentMethodLabels) as Array<
@@ -259,6 +259,20 @@ export function RecordPaymentDialog({
                 className={fieldClassName}
               />
               <FieldError fieldName="paymentDate" result={result} />
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-sm font-semibold text-slate-700">
+                Mois de référence
+              </span>
+              <input
+                name="paymentMonth"
+                type="month"
+                required
+                defaultValue={payment?.paymentMonth ?? today.slice(0, 7)}
+                className={fieldClassName}
+              />
+              <FieldError fieldName="paymentMonth" result={result} />
             </label>
 
             <label className="space-y-2">

@@ -15,12 +15,37 @@ export type CondoFeePayment = {
   ownerName: string;
   amount: number;
   paymentDate: string;
+  paymentMonth: string;
+  referenceYear: number | null;
   paymentMethod: PaymentMethod;
   chequeNumber: string | null;
   notes: string | null;
   createdById: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type CondoFeePaymentHistory = {
+  id: string;
+  tenantId: string;
+  condoCorporationId: string;
+  unitId: string;
+  periodStart: string;
+  amount: number;
+  isPaid: boolean;
+  paidAt: string | null;
+  recordedById: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type UnitCondoFeePaymentMonth = {
+  amount: number;
+  isCurrentMonth: boolean;
+  isPaid: boolean;
+  label: string;
+  paidAt: string | null;
+  periodStart: string;
 };
 
 export type UnitCondoFeeSummary = {
@@ -32,6 +57,12 @@ export type UnitCondoFeeSummary = {
   lastPaymentDate: string | null;
   lastChequeReceivedDate: string | null;
   lastChequeNumber: string | null;
+  currentMonth: UnitCondoFeePaymentMonth;
+  nextPaymentMonth: UnitCondoFeePaymentMonth;
+  historyMonths: UnitCondoFeePaymentMonth[];
+  fiscalYearExpectedCount: number;
+  fiscalYearPaidCount: number;
+  fiscalYearTotalExpected: number;
   fiscalYearTotalReceived: number;
   balanceDue: number;
   status: PaymentStatus;

@@ -1,0 +1,2 @@
+ALTER TABLE "Condo"
+ALTER COLUMN "parkingShareValue" TYPE DECIMAL(10, 6);

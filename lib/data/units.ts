@@ -1,5 +1,6 @@
 import type { SessionUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
+import { calculateUnitQuotePartTotal } from "@/lib/units/quote-part";
 import { getCurrentCondoForManager, type CurrentCondo } from "./condos";
 
 export type UnitOccupancyStatus =
@@ -36,6 +37,12 @@ export type CondoUnitRow = {
   email: string;
   sharePercentage: string;
   sharePercentageDisplay: string;
+  parkingQuotePart: string;
+  parkingQuotePartDisplay: string;
+  parkingCount: number;
+  parkingCountDisplay: string;
+  totalQuotePart: string;
+  totalQuotePartDisplay: string;
   parkingSpace: string;
   storageLocker: string;
   parking: string;
@@ -63,6 +70,7 @@ export type UnitMutationInput = {
   hasFireplace?: boolean;
   hasAirConditioning?: boolean;
   sharePercentage?: string;
+  parkingCount?: number;
   parkingSpace?: string;
   storageLocker?: string;
   occupancyStatus?: UnitOccupancyStatus | null;
@@ -117,14 +125,18 @@ function dateToInputValue(value: Date | null) {
   return value ? value.toISOString().slice(0, 10) : "";
 }
 
-function formatSharePercentage(value: unknown) {
-  const rawValue = decimalToString(value);
-
-  if (!rawValue) {
-    return NOT_DEFINED;
+function formatPercentageNumber(value: number, asPercent = false) {
+  if (!Number.isFinite(value) || value < 0) {
+    return "0 %";
   }
 
-  return `${rawValue.replace(".", ",")} %`;
+  const normalizedValue = asPercent ? value * 100 : value;
+  const asString =
+    Number.isInteger(normalizedValue)
+      ? String(normalizedValue)
+      : normalizedValue.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
+
+  return `${asString.replace(".", ",")} %`;
 }
 
 function getStatusLabel(status: UnitOccupancyStatus | null) {
@@ -203,7 +215,10 @@ export async function getBuildingsForCondo(
   return getCondoBuildings(condoId);
 }
 
-export async function getUnitsForCondo(condoId: string): Promise<CondoUnitRow[]> {
+export async function getUnitsForCondo(
+  condoId: string,
+  parkingShareValue = 0
+): Promise<CondoUnitRow[]> {
   const units = await prisma.unit.findMany({
     where: {
       deletedAt: null,
@@ -228,6 +243,7 @@ export async function getUnitsForCondo(condoId: string): Promise<CondoUnitRow[]>
       hasFireplace: true,
       hasAirConditioning: true,
       sharePercentage: true,
+      parkingCount: true,
       parkingSpace: true,
       storageLocker: true,
       monthlyCondoFee: true,
@@ -242,37 +258,51 @@ export async function getUnitsForCondo(condoId: string): Promise<CondoUnitRow[]>
     },
   });
 
-  return units.map((unit) => ({
-    id: unit.id,
-    unitNumber: unit.number,
-    buildingId: unit.building.id,
-    buildingName: unit.building.name,
-    floor: unit.floor ?? "",
-    ownerName: unit.ownerName ?? "",
-    ownerPhone: unit.phone ?? "",
-    ownerEmail: unit.email ?? "",
-    mobile: unit.mobile ?? "",
-    squareFeet: unit.squareFeet,
-    roomCount: unit.roomCount ?? "",
-    bathroomCount: unit.bathroomCount,
-    insuranceRenewalDate: dateToInputValue(unit.insuranceRenewalDate),
-    waterHeaterDate: dateToInputValue(unit.waterHeaterDate),
-    hasFireplace: unit.hasFireplace,
-    hasAirConditioning: unit.hasAirConditioning,
-    phone: unit.phone ?? NOT_DEFINED,
-    email: unit.email ?? NOT_DEFINED,
-    sharePercentage: decimalToString(unit.sharePercentage),
-    sharePercentageDisplay: formatSharePercentage(unit.sharePercentage),
-    parkingSpace: unit.parkingSpace ?? "",
-    storageLocker: unit.storageLocker ?? "",
-    parking: unit.parkingSpace ?? NOT_DEFINED,
-    locker: unit.storageLocker ?? NOT_DEFINED,
-    monthlyCondoFee: decimalToString(unit.monthlyCondoFee),
-    monthlyCondoFeeAmount: decimalToNumber(unit.monthlyCondoFee),
-    occupancyStatus: unit.status,
-    status: getStatusLabel(unit.status),
-    notes: unit.notes ?? "",
-  }));
+  return units.map((unit) => {
+    const quotePart = calculateUnitQuotePartTotal({
+      parkingCount: unit.parkingCount,
+      parkingShareValue,
+      sharePercentage: unit.sharePercentage,
+    });
+
+    return {
+      id: unit.id,
+      unitNumber: unit.number,
+      buildingId: unit.building.id,
+      buildingName: unit.building.name,
+      floor: unit.floor ?? "",
+      ownerName: unit.ownerName ?? "",
+      ownerPhone: unit.phone ?? "",
+      ownerEmail: unit.email ?? "",
+      mobile: unit.mobile ?? "",
+      squareFeet: unit.squareFeet,
+      roomCount: unit.roomCount ?? "",
+      bathroomCount: unit.bathroomCount,
+      insuranceRenewalDate: dateToInputValue(unit.insuranceRenewalDate),
+      waterHeaterDate: dateToInputValue(unit.waterHeaterDate),
+      hasFireplace: unit.hasFireplace,
+      hasAirConditioning: unit.hasAirConditioning,
+      phone: unit.phone ?? NOT_DEFINED,
+      email: unit.email ?? NOT_DEFINED,
+      sharePercentage: decimalToString(unit.sharePercentage),
+      sharePercentageDisplay: formatPercentageNumber(quotePart.unitQuotePart),
+      parkingQuotePart: String(quotePart.parkingQuotePart),
+      parkingQuotePartDisplay: formatPercentageNumber(quotePart.parkingQuotePart),
+      parkingCount: quotePart.parkingCount,
+      parkingCountDisplay: String(quotePart.parkingCount),
+      totalQuotePart: String(quotePart.totalQuotePart),
+      totalQuotePartDisplay: formatPercentageNumber(quotePart.totalQuotePart, true),
+      parkingSpace: unit.parkingSpace ?? "",
+      storageLocker: unit.storageLocker ?? "",
+      parking: unit.parkingSpace ?? NOT_DEFINED,
+      locker: unit.storageLocker ?? NOT_DEFINED,
+      monthlyCondoFee: decimalToString(unit.monthlyCondoFee),
+      monthlyCondoFeeAmount: decimalToNumber(unit.monthlyCondoFee),
+      occupancyStatus: unit.status,
+      status: getStatusLabel(unit.status),
+      notes: unit.notes ?? "",
+    };
+  });
 }
 
 export async function getUnitsForCurrentCondo(
@@ -287,7 +317,7 @@ export async function getUnitsForCurrentCondo(
 
   const [buildings, units] = await Promise.all([
     getBuildingsForCondo(condo.id),
-    getUnitsForCondo(condo.id),
+    getUnitsForCondo(condo.id, condo.parkingShareValue),
   ]);
 
   return { condo, buildings, units };
@@ -316,6 +346,7 @@ export async function createUnit(condoId: string, input: UnitMutationInput) {
       notes: optionalValue(input.notes),
       number: input.unitNumber.trim(),
       ownerName: optionalValue(input.ownerName),
+      parkingCount: input.parkingCount ?? 0,
       parkingSpace: optionalValue(input.parkingSpace),
       phone: optionalValue(input.ownerPhone),
       roomCount: optionalValue(input.roomCount),
@@ -351,6 +382,7 @@ export async function updateUnit(
       notes: optionalValue(input.notes),
       number: input.unitNumber.trim(),
       ownerName: optionalValue(input.ownerName),
+      parkingCount: input.parkingCount ?? 0,
       parkingSpace: optionalValue(input.parkingSpace),
       phone: optionalValue(input.ownerPhone),
       roomCount: optionalValue(input.roomCount),

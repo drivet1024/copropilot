@@ -79,11 +79,8 @@ export function UnitsTable({
     "Unité",
     ...(showBuildingColumn ? ["Bâtiment"] : []),
     "Propriétaire",
-    "Téléphone",
-    "Courriel",
-    "Quote-part",
-    "Stationnement",
-    "Casier",
+    "Stationnements",
+    "Quote-part totale",
     "Frais mensuels",
     "Statut",
     "Actions",
@@ -169,7 +166,7 @@ export function UnitsTable({
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1250px] text-left text-sm">
+            <table className="w-full min-w-[1050px] text-left text-sm">
               <thead className="bg-white">
                 <tr className="border-b border-slate-200">
                   {headers.map((header) => (
@@ -210,16 +207,11 @@ export function UnitsTable({
                       <td className="px-4 py-4 font-semibold text-slate-700">
                         {unit.ownerName || "Non défini"}
                       </td>
-                      <td className="px-4 py-4 text-slate-600">{unit.phone}</td>
-                      <td className="px-4 py-4 text-slate-600">{unit.email}</td>
                       <td className="px-4 py-4 font-semibold text-slate-700">
-                        {unit.sharePercentageDisplay}
+                        {unit.parkingCountDisplay}
                       </td>
-                      <td className="px-4 py-4 text-slate-600">
-                        {unit.parking}
-                      </td>
-                      <td className="px-4 py-4 text-slate-600">
-                        {unit.locker}
+                      <td className="px-4 py-4 font-semibold text-slate-700">
+                        {unit.totalQuotePartDisplay}
                       </td>
                       <td className="px-4 py-4 font-semibold text-slate-700">
                         {formatCurrency(unit.monthlyCondoFeeAmount)}

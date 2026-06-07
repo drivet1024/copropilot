@@ -8,6 +8,7 @@ import {
   PaymentStatusBadge,
   statusLabels,
 } from "@/components/payments/payment-status-badge";
+import { RecordMultiplePaymentsDialog } from "@/components/payments/record-multiple-payments-dialog";
 import { RecordPaymentDialog } from "@/components/payments/record-payment-dialog";
 import { Button } from "@/components/ui/button";
 import type {
@@ -16,10 +17,10 @@ import type {
 } from "@/lib/payments/payment-types";
 
 const currencyFormatter = new Intl.NumberFormat("fr-CA", {
-  style: "currency",
   currency: "CAD",
-  minimumFractionDigits: 2,
   maximumFractionDigits: 2,
+  minimumFractionDigits: 2,
+  style: "currency",
 });
 
 const dateFormatter = new Intl.DateTimeFormat("fr-CA", {
@@ -67,10 +68,11 @@ export function CondoFeePaymentsTable({
   const [month, setMonth] = useState("ALL");
   const [fiscalYear, setFiscalYear] = useState(fiscalYearOptions[0] ?? "2024");
 
+  // Périodes disponibles pour le filtre (basées sur les derniers paiements)
   const monthOptions = useMemo(() => {
     const months = new Set(
       summaries
-        .map((summary) => summary.lastPaymentDate?.slice(0, 7))
+        .map((summary) => summary.lastPayment?.paymentMonth)
         .filter((value): value is string => Boolean(value))
     );
 
@@ -87,7 +89,7 @@ export function CondoFeePaymentsTable({
         summary.ownerName.toLowerCase().includes(normalizedQuery);
       const matchesStatus = status === "ALL" || summary.status === status;
       const matchesMonth =
-        month === "ALL" || summary.lastPaymentDate?.startsWith(month);
+        month === "ALL" || summary.lastPayment?.paymentMonth?.startsWith(month);
 
       return matchesQuery && matchesStatus && matchesMonth;
     });
@@ -107,7 +109,12 @@ export function CondoFeePaymentsTable({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <RecordPaymentDialog units={summaries} readOnly={readOnly} />
+          <RecordMultiplePaymentsDialog
+            units={summaries}
+            fiscalYearOptions={fiscalYearOptions}
+            defaultFiscalYear={fiscalYear}
+            readOnly={readOnly}
+          />
         </div>
       </div>
 
@@ -169,7 +176,7 @@ export function CondoFeePaymentsTable({
 
         <label className="space-y-2">
           <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-            Année fiscale
+            Année financière
           </span>
           <select
             value={fiscalYear}
@@ -186,7 +193,7 @@ export function CondoFeePaymentsTable({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1200px] text-left text-sm">
+        <table className="w-full min-w-[1000px] text-left text-sm">
           <thead className="bg-white">
             <tr className="border-b border-slate-200">
               {[
@@ -194,9 +201,8 @@ export function CondoFeePaymentsTable({
                 "Copropriétaire",
                 "Frais mensuels",
                 "Dernier paiement reçu",
-                "Date du dernier chèque reçu",
-                "Numéro du dernier chèque",
-                "Total reçu année fiscale",
+                "Mois payé",
+                "Total reçu année financière",
                 "Solde à recevoir",
                 "Statut",
                 "Actions",
@@ -215,7 +221,7 @@ export function CondoFeePaymentsTable({
             {summaries.length === 0 ? (
               <tr>
                 <td
-                  colSpan={10}
+                  colSpan={9}
                   className="px-4 py-8 text-center text-base font-semibold text-slate-500"
                 >
                   Aucune unité enregistrée.
@@ -224,7 +230,7 @@ export function CondoFeePaymentsTable({
             ) : filteredSummaries.length === 0 ? (
               <tr>
                 <td
-                  colSpan={10}
+                  colSpan={9}
                   className="px-4 py-8 text-center text-base font-semibold text-slate-500"
                 >
                   Aucune unité ne correspond aux filtres.
@@ -249,10 +255,9 @@ export function CondoFeePaymentsTable({
                     {formatDate(summary.lastPaymentDate)}
                   </td>
                   <td className="px-4 py-4 text-slate-600">
-                    {formatDate(summary.lastChequeReceivedDate)}
-                  </td>
-                  <td className="px-4 py-4 font-semibold text-slate-700">
-                    {summary.lastChequeNumber ?? "Aucun"}
+                    {summary.lastPayment?.paymentMonth
+                      ? getMonthLabel(summary.lastPayment.paymentMonth)
+                      : "Aucun"}
                   </td>
                   <td className="px-4 py-4 font-bold text-slate-950">
                     {formatCurrency(summary.fiscalYearTotalReceived)}
@@ -263,8 +268,8 @@ export function CondoFeePaymentsTable({
                   <td className="px-4 py-4">
                     <PaymentStatusBadge status={summary.status} />
                   </td>
-                  <td className="px-4 py-4">
-                    <div className="flex flex-wrap gap-2">
+                  <td className="whitespace-nowrap px-4 py-4">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <RecordPaymentDialog
                         defaultUnitId={summary.unitId}
                         readOnly={readOnly}
@@ -282,7 +287,7 @@ export function CondoFeePaymentsTable({
                               <Button
                                 type="button"
                                 variant="outline"
-                                className="h-10 rounded-xl border-slate-300 bg-white"
+                                className="h-10 whitespace-nowrap rounded-xl border-slate-300 bg-white"
                                 disabled={readOnly}
                               >
                                 <Pencil className="size-4" aria-hidden="true" />
@@ -297,7 +302,7 @@ export function CondoFeePaymentsTable({
                               <Button
                                 type="button"
                                 variant="outline"
-                                className="h-10 rounded-xl border-red-200 bg-white text-red-700 hover:bg-red-50"
+                                className="h-10 whitespace-nowrap rounded-xl border-red-200 bg-white text-red-700 hover:bg-red-50"
                                 disabled={readOnly}
                               >
                                 <Trash2 className="size-4" aria-hidden="true" />
@@ -324,7 +329,7 @@ export function CondoFeePaymentsTable({
           {filteredSummaries.length > 1 ? "s" : ""}
         </span>
         <span className="font-semibold">
-          Filtre année fiscale: {fiscalYear} · Statut:{" "}
+          Filtre année financière: {fiscalYear} · Statut:{" "}
           {status === "ALL" ? "Tous" : statusLabels[status]}
         </span>
       </div>
